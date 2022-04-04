@@ -628,6 +628,8 @@ unicode_to_cell(unicode_val_T c)
 		|| (c >= 0x20000 && c <= 0x2fffd)
 		|| (c >= 0x30000 && c <= 0x3fffd)))
 		return 2;
+	if (c == 0x200b)
+		return 0;
 
 	return 1;
 }

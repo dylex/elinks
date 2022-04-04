@@ -15,8 +15,8 @@ struct uri;
 
 /* For parser/parse.c: */
 
-void process_head(struct html_context *html_context, unsigned char *head);
-void put_chrs(struct html_context *html_context, unsigned char *start, int len);
+void process_head(struct html_context *html_context, char *head);
+void put_chrs(struct html_context *html_context, char *start, int len);
 
 enum html_whitespace_state {
 	/* Either we are starting a new "block" or the last segment of the
@@ -51,7 +51,7 @@ struct html_context {
 	/* These are global per-document base values, alterable by the <base>
 	 * element. */
 	struct uri *base_href;
-	unsigned char *base_target;
+	char *base_target;
 
 	struct document_options *options;
 
@@ -66,7 +66,7 @@ struct html_context {
 	LIST_OF(struct html_element) stack;
 
 	/* For parser/parse.c: */
-	unsigned char *eoff; /* For parser/forms.c too */
+	char *eoff; /* For parser/forms.c too */
 	int line_breax; /* This is for ln_break. */
 	int position; /* This is the position on the document canvas relative
 	               * to the current line and is maintained by put_chrs. */
@@ -83,12 +83,20 @@ struct html_context {
 	unsigned int has_link_lines:1;
 	unsigned int was_body:1; /* For META refresh inside <body>. */
 	unsigned int was_body_background:1; /* For <HTML> with style. */
+	unsigned int skip_html:1;
+	unsigned int skip_select:1;
+	unsigned int support_css:1;
+	unsigned int skip_textarea:1;
+
+	unsigned int was_xml_parsed:1;
 
 	/* For html/parser.c, html/renderer.c */
 	int margin;
 
 	/* For parser/forms.c: */
-	unsigned char *startf;
+	char *startf;
+
+	int ff;
 
 	/* For:
 	 * html/parser/parse.c
@@ -112,7 +120,7 @@ struct html_context {
 	 * html/parser.c */
 	/* Note that this is for usage by put_chrs only; anywhere else in
 	 * the parser, one should use put_chrs. */
-	void (*put_chars_f)(struct html_context *, unsigned char *, int);
+	void (*put_chars_f)(struct html_context *, char *, int);
 
 	/* For:
 	 * html/parser/forms.c
@@ -131,23 +139,23 @@ struct html_context {
 
 #define html_top	((struct html_element *) html_context->stack.next)
 #define html_bottom	((struct html_element *) html_context->stack.prev)
-#define format		(html_top->attr)
-#define par_format	(html_top->parattr)
+#define elformat		(html_top->attr)
+#define par_elformat	(html_top->parattr)
 
-#define html_is_preformatted() (format.style.attr & AT_PREFORMATTED)
+#define html_is_preformatted() (elformat.style.attr & AT_PREFORMATTED)
 
 #define get_html_max_width() \
-	int_max(par_format.width - (par_format.leftmargin + par_format.rightmargin), 0)
+	int_max(par_elformat.width - (par_elformat.leftmargin + par_elformat.rightmargin), 0)
 
 /* For parser/link.c: */
 
-void html_focusable(struct html_context *html_context, unsigned char *a);
-void html_skip(struct html_context *html_context, unsigned char *a);
-unsigned char *get_target(struct document_options *options, unsigned char *a);
+void html_focusable(struct html_context *html_context, char *a);
+void html_skip(struct html_context *html_context, char *a);
+char *get_target(struct document_options *options, char *a);
 
 void
 import_css_stylesheet(struct css_stylesheet *css, struct uri *base_uri,
-		      const unsigned char *unterminated_url, int len);
+		      const char *unterminated_url, int len);
 
 #ifdef __cplusplus
 }

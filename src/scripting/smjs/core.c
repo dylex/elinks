@@ -10,7 +10,7 @@
 
 #include "config/home.h"
 #include "ecmascript/spidermonkey-shared.h"
-#include <jsprf.h>
+#include <js/Printf.h>
 #include "intl/charsets.h"
 #include "main/module.h"
 #include "osdep/osdep.h"
@@ -22,6 +22,9 @@
 #include "util/file.h"
 #include "util/string.h"
 
+#include <js/CompilationAndEvaluation.h>
+#include <js/SourceText.h>
+#include <js/Warnings.h>
 
 #define SMJS_HOOKS_FILENAME "hooks.js"
 
@@ -30,149 +33,41 @@ JSObject *smjs_elinks_object;
 struct session *smjs_ses;
 
 void
-alert_smjs_error(unsigned char *msg)
+alert_smjs_error(char *msg)
 {
 	report_scripting_error(&smjs_scripting_module,
 	                       smjs_ses, msg);
 }
 
-static bool
-PrintError(JSContext* cx, FILE* file, JS::ConstUTF8CharsZ toStringResult,
-               JSErrorReport* report, bool reportWarnings)
-{
-    MOZ_ASSERT(report);
-
-    /* Conditionally ignore reported warnings. */
-    if (JSREPORT_IS_WARNING(report->flags) && !reportWarnings)
-        return false;
-
-    char* prefix = nullptr;
-    if (report->filename)
-        prefix = JS_smprintf("%s:", report->filename);
-    if (report->lineno) {
-        char* tmp = prefix;
-        prefix = JS_smprintf("%s%u:%u ", tmp ? tmp : "", report->lineno, report->column);
-        JS_free(cx, tmp);
-    }
-    if (JSREPORT_IS_WARNING(report->flags)) {
-        char* tmp = prefix;
-        prefix = JS_smprintf("%s%swarning: ",
-                             tmp ? tmp : "",
-                             JSREPORT_IS_STRICT(report->flags) ? "strict " : "");
-        JS_free(cx, tmp);
-    }
-
-    const char* message = toStringResult ? toStringResult.c_str() : report->message().c_str();
-
-    /* embedded newlines -- argh! */
-    const char* ctmp;
-    while ((ctmp = strchr(message, '\n')) != 0) {
-        ctmp++;
-        if (prefix)
-            fputs(prefix, file);
-        fwrite(message, 1, ctmp - message, file);
-        message = ctmp;
-    }
-
-    /* If there were no filename or lineno, the prefix might be empty */
-    if (prefix)
-        fputs(prefix, file);
-    fputs(message, file);
-
-    if (const char16_t* linebuf = report->linebuf()) {
-        size_t n = report->linebufLength();
-
-        fputs(":\n", file);
-        if (prefix)
-            fputs(prefix, file);
-
-        for (size_t i = 0; i < n; i++)
-            fputc(static_cast<char>(linebuf[i]), file);
-
-        // linebuf usually ends with a newline. If not, add one here.
-        if (n == 0 || linebuf[n-1] != '\n')
-            fputc('\n', file);
-
-        if (prefix)
-            fputs(prefix, file);
-
-        n = report->tokenOffset();
-        for (size_t i = 0, j = 0; i < n; i++) {
-            if (linebuf[i] == '\t') {
-                for (size_t k = (j + 8) & ~7; j < k; j++)
-                    fputc('.', file);
-                continue;
-            }
-            fputc('.', file);
-            j++;
-        }
-        fputc('^', file);
-    }
-    fputc('\n', file);
-    fflush(file);
-    JS_free(cx, prefix);
-    return true;
-}
-
-
-
 static void
 error_reporter(JSContext *ctx, JSErrorReport *report)
 {
-	unsigned char *strict, *exception, *warning, *error;
-	struct string msg;
-	char *prefix = nullptr;
+	char *ptr;
+	size_t size;
 
-	if (!init_string(&msg)) goto reported;
+	FILE *f = open_memstream(&ptr, &size);
 
-	strict	  = JSREPORT_IS_STRICT(report->flags) ? " strict" : "";
-	exception = JSREPORT_IS_EXCEPTION(report->flags) ? " exception" : "";
-	warning   = JSREPORT_IS_WARNING(report->flags) ? " warning" : "";
-	error	  = !report->flags ? " error" : "";
+	if (f) {
+		struct string msg;
+		JS::PrintError(ctx, f, report, true/*reportWarnings*/);
+		fclose(f);
 
-	PrintError(ctx, stderr, JS::ConstUTF8CharsZ(), report, true/*reportWarnings*/);
-
-	add_format_to_string(&msg, "A client script raised the following%s%s%s%s",
-			strict, exception, warning, error);
-
-	add_to_string(&msg, ":\n\n");
-
-	add_format_to_string(&msg, "\n\n%d:%d ", report->lineno, report->column);
-
-	if (report->filename) {
-		prefix = JS_smprintf("%s:", report->filename);
+		if (!init_string(&msg)) {
+			free(ptr);
+			return;
+		}
+		add_to_string(&msg, "A client script raised the following:\n");
+		add_bytes_to_string(&msg, ptr, size);
+		free(ptr);
+		alert_smjs_error(msg.source);
+		done_string(&msg);
 	}
 
-	if (report->lineno) {
-		char* tmp = prefix;
-		prefix = JS_smprintf("%s%u:%u ", tmp ? tmp : "", report->lineno, report->column);
-		JS_free(ctx, tmp);
-	}
-
-	if (prefix) {
-		add_to_string(&msg, prefix);
-	}
-
-#if 0
-	if (report->linebuf) {
-		int pos = report->offset;
-
-		add_format_to_string(&msg, "\n\n%s\n.%*s^%*s.",
-			       report->linebuf,
-			       pos - 2, " ",
-			       strlen(report->linebuf) - pos - 1, " ");
-	}
-#endif
-
-	alert_smjs_error(msg.source);
-	done_string(&msg);
-
-reported:
 	JS_ClearPendingException(ctx);
 }
 
 static int
-smjs_do_file(unsigned char *path)
+smjs_do_file(char *path)
 {
 	int ret = 1;
 	struct string script;
@@ -183,18 +78,27 @@ smjs_do_file(unsigned char *path)
 	opts.setNoScriptRval(true);
 	JS::RootedValue rval(smjs_ctx);
 
-	JS_BeginRequest(smjs_ctx);
-	JSCompartment *prev = JS_EnterCompartment(smjs_ctx, smjs_elinks_object);
+	JS::Realm *prev = JS::EnterRealm(smjs_ctx, smjs_elinks_object);
 
-	if (!add_file_to_string(&script, path)
-	     || false == JS::Evaluate(smjs_ctx, opts,
-				script.source, script.length, &rval)) {
+	if (add_file_to_string(&script, path)) {
+		JS::SourceText<mozilla::Utf8Unit> srcBuf;
+
+		if (!srcBuf.init(smjs_ctx, script.source, script.length, JS::SourceOwnership::Borrowed)) {
+			alert_smjs_error("error loading script file");
+			ret = 0;
+		} else {
+			if (!JS::Evaluate(smjs_ctx, opts,
+				srcBuf, &rval)) {
+				alert_smjs_error("error loading script file");
+				ret = 0;
+			}
+		}
+	} else {
 		alert_smjs_error("error loading script file");
 		ret = 0;
 	}
 
-	JS_LeaveCompartment(smjs_ctx, prev);
-	JS_EndRequest(smjs_ctx);
+	JS::LeaveRealm(smjs_ctx, prev);
 	done_string(&script);
 
 	return ret;
@@ -205,8 +109,7 @@ smjs_do_file_wrapper(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
 	JS::CallArgs args = CallArgsFromVp(argc, rval);
 
-	JSString *jsstr = args[0].toString();
-	unsigned char *path = JS_EncodeString(smjs_ctx, jsstr);
+	char *path = jsval_to_string(smjs_ctx, args[0]);
 
 	if (smjs_do_file(path))
 		return true;
@@ -217,13 +120,13 @@ smjs_do_file_wrapper(JSContext *ctx, unsigned int argc, JS::Value *rval)
 static void
 smjs_load_hooks(void)
 {
-	unsigned char *path;
+	char *path;
 
 	assert(smjs_ctx);
 
 	if (elinks_home) {
 		path = straconcat(elinks_home, SMJS_HOOKS_FILENAME,
-				  (unsigned char *) NULL);
+				  (char *) NULL);
 	} else {
 		path = stracpy(CONFDIR STRING_DIR_SEP SMJS_HOOKS_FILENAME);
 	}
@@ -288,68 +191,18 @@ cleanup_smjs(struct module *module)
  * @return the new string.  On error, report the error to SpiderMonkey
  * and return NULL.  */
 JSString *
-utf8_to_jsstring(JSContext *ctx, const unsigned char *str, int length)
+utf8_to_jsstring(JSContext *ctx, const char *str, int length)
 {
 	size_t in_bytes;
-	const unsigned char *in_end;
-	size_t utf16_alloc;
-	char16_t *utf16;
-	size_t utf16_used;
-	JSString *jsstr;
 
 	if (length == -1)
 		in_bytes = strlen(str);
 	else
 		in_bytes = length;
 
-	/* Each byte of input can become at most one UTF-16 unit.
-	 * Check whether the multiplication could overflow.  */
-	assert(!needs_utf16_surrogates(UCS_REPLACEMENT_CHARACTER));
-	if (in_bytes > ((size_t) -1) / sizeof(char16_t)) {
-#ifdef HAVE_JS_REPORTALLOCATIONOVERFLOW
-		JS_ReportAllocationOverflow(ctx);
-#else
-		JS_ReportOutOfMemory(ctx);
-#endif
-		return NULL;
-	}
-	utf16_alloc = in_bytes;
-	/* Use malloc because SpiderMonkey will handle the memory after
-	 * this routine finishes.  */
-	utf16 = malloc(utf16_alloc * sizeof(char16_t));
-	if (utf16 == NULL) {
-		JS_ReportOutOfMemory(ctx);
-		return NULL;
-	}
+	JS::ConstUTF8CharsZ utf8chars(str, in_bytes);
 
-	in_end = str + in_bytes;
-
-	utf16_used = 0;
-	for (;;) {
-		unicode_val_T unicode;
-
-		unicode = utf8_to_unicode((unsigned char **) &str, in_end);
-		if (unicode == UCS_NO_CHAR)
-			break;
-
-		if (needs_utf16_surrogates(unicode)) {
-			assert(utf16_alloc - utf16_used >= 2);
-			if_assert_failed { free(utf16); return NULL; }
-			utf16[utf16_used++] = get_utf16_high_surrogate(unicode);
-			utf16[utf16_used++] = get_utf16_low_surrogate(unicode);
-		} else {
-			assert(utf16_alloc - utf16_used >= 1);
-			if_assert_failed { free(utf16); return NULL; }
-			utf16[utf16_used++] = unicode;
-		}
-	}
-
-	jsstr = JS_NewUCString(ctx, utf16, utf16_used);
-	/* Do not free if JS_NewUCString was successful because it takes over
-	 * handling of the memory. */
-	if (jsstr == NULL) free(utf16);
-
-	return jsstr;
+	return JS_NewStringCopyUTF8Z(ctx, utf8chars);
 }
 
 /** Convert a char16_t array to UTF-8 and append it to struct string.
@@ -410,7 +263,7 @@ add_jschars_to_utf8_string(struct string *utf8,
  * @return the new string, which the caller must eventually free
  * with mem_free().  On error, report the error to SpiderMonkey
  * and return NULL; *@a length is then undefined.  */
-unsigned char *
+char *
 jsstring_to_utf8(JSContext *ctx, JSString *jsstr, int *length)
 {
 	size_t utf16_len;

@@ -101,7 +101,7 @@ struct itrm {
 	timer_id_T timer;		/**< ESC timeout timer */
 	struct termios t;		/**< For restoring original attributes */
 	void *mouse_h;			/**< Mouse handle */
-	unsigned char *orig_title;	/**< For restoring window title */
+	char *orig_title;	/**< For restoring window title */
 
 	int verase;			/**< Byte to map to KBD_BS, or -1 */
 	int title_codepage;             /**< Codepage of terminal title */

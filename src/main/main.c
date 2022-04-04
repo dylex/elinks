@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h> /* OS/2 needs this after sys/types.h */
+#endif
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h> /* OS/2 needs this after sys/types.h */
 #endif
@@ -27,7 +30,7 @@
 #include "dialogs/menu.h"
 #include "document/document.h"
 #include "intl/charsets.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/event.h"
 #include "main/interlink.h"
 #include "main/main.h"
@@ -58,7 +61,7 @@
 struct program program;
 
 static int ac;
-static unsigned char **av;
+static char **av;
 static int init_b = 0;
 static int init_o = 0;
 
@@ -93,10 +96,10 @@ check_stdio(LIST_OF(struct string_list_item) *url_list)
 static void
 check_cwd(void)
 {
-	unsigned char *cwd = get_cwd();
+	char *cwd = get_cwd();
 
 	if (!cwd || !file_is_dir(cwd)) {
-		unsigned char *home = getenv("HOME");
+		char *home = getenv("HOME");
 
 		if (home && file_is_dir(home))
 			chdir(home);
@@ -207,7 +210,7 @@ init(void)
 		if (!list_empty(url_list)) {
 			dump_next(&url_list);
 		} else {
-			unsigned char *arg = get_cmd_opt_bool("dump")
+			char *arg = get_cmd_opt_bool("dump")
 					   ? "dump" : "source";
 
 			usrerror(gettext("URL expected after -%s"), arg);
@@ -352,7 +355,7 @@ main(int argc, char *argv[])
 	program.retval = RET_OK;
 	program.path = argv[0];
 	ac = argc;
-	av = (unsigned char **) argv;
+	av = (char **) argv;
 
 	select_loop(init);
 	terminate_all_subsystems();

@@ -3,15 +3,13 @@
 #ifndef EL__OSDEP_GENERIC_H
 #define EL__OSDEP_GENERIC_H
 
+#ifdef HAVE_STDALIGN_H
 #include <stdalign.h>
+#endif
 
-#ifdef HAVE_LIMITS_H
 #include <limits.h> /* may contain PIPE_BUF definition on some systems */
-#endif
 
-#ifdef HAVE_STDDEF_H
 #include <stddef.h> /* may contain offsetof() */
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,7 +98,7 @@ safe_write(int fd, const void *buf, size_t count) {
 
 #if !defined(alignof) && ((!defined(__cplusplus) || __cplusplus < 201103L))
 /* Alignment of types.  */
-#define alignof(TYPE) offsetof(struct { unsigned char dummy1; TYPE dummy; }, dummy2)
+#define alignof(TYPE) offsetof(struct { unsigned char dummy1; TYPE dummy2; }, dummy2)
 #endif
 
 /* Using this macro to copy structs is both faster and safer than

@@ -16,13 +16,23 @@
 #include "config/options.h"
 #include "document/document.h"
 #include "document/dom/renderer.h"
+#include "document/gemini/renderer.h"
 #include "document/html/frames.h"
+#include "document/html/iframes.h"
 #include "document/html/renderer.h"
-#include "document/libdom/renderer.h"
 #include "document/plain/renderer.h"
+#ifdef CONFIG_XML
+#include "document/xml/renderer.h"
+#include "document/xml/renderer2.h"
+#endif
 #include "document/renderer.h"
 #include "document/view.h"
+#ifdef CONFIG_ECMASCRIPT
 #include "ecmascript/ecmascript.h"
+#endif
+#ifdef CONFIG_ECMASCRIPT_SMJS
+#include "ecmascript/spidermonkey/document.h"
+#endif
 #include "encoding/encoding.h"
 #include "intl/charsets.h"
 #include "main/main.h"
@@ -42,7 +52,7 @@
 #include "viewer/text/vs.h"
 
 
-#ifdef CONFIG_ECMASCRIPT_SMJS
+#if defined(CONFIG_ECMASCRIPT_SMJS) || defined(CONFIG_QUICKJS)
 /** @todo XXX: This function is de facto obsolete, since we do not need to copy
  * snippets around anymore (we process them in one go after the document is
  * loaded; gradual processing was practically impossible because the snippets
@@ -123,7 +133,7 @@ process_snippets(struct ecmascript_interpreter *interpreter,
 	for (; *current != (struct string_list_item *) snippets;
 	     (*current) = (*current)->next) {
 		struct string *string = &(*current)->string;
-		unsigned char *uristring;
+		char *uristring;
 		struct uri *uri;
 		struct cache_entry *cached;
 		struct fragment *fragment;
@@ -201,6 +211,7 @@ process_snippets(struct ecmascript_interpreter *interpreter,
 			ecmascript_eval(interpreter, &code, NULL);
 		}
 	}
+	check_for_rerender(interpreter, "eval");
 }
 #endif
 
@@ -220,7 +231,7 @@ render_encoded_document(struct cache_entry *cached, struct document *document)
 	}
 
 	if (uri->protocol != PROTOCOL_FILE) {
-		unsigned char *extension = get_extension_from_uri(uri);
+		char *extension = get_extension_from_uri(uri);
 
 		if (extension) {
 			encoding = guess_encoding(extension);
@@ -229,7 +240,7 @@ render_encoded_document(struct cache_entry *cached, struct document *document)
 
 		if (encoding != ENCODING_NONE) {
 			int length = 0;
-			unsigned char *source;
+			char *source;
 			struct stream_encoded *stream = open_encoded(-1, encoding);
 
 			if (!stream) {
@@ -248,12 +259,11 @@ render_encoded_document(struct cache_entry *cached, struct document *document)
 			}
 		}
 	}
-
-#ifdef CONFIG_LIBDOM
+#ifdef CONFIG_XML
 	if (document->options.plain && cached->content_type
 	    && (!c_strcasecmp("text/html", cached->content_type)
 	    || !c_strcasecmp("application/xhtml+xml", cached->content_type))) {
-		render_source_document(cached, document, &buffer);
+		render_source_document_cxx(cached, document, &buffer);
 	}
 	else
 #endif
@@ -279,7 +289,15 @@ render_encoded_document(struct cache_entry *cached, struct document *document)
 			render_dom_document(cached, document, &buffer);
 		else
 #endif
-			render_html_document(cached, document, &buffer);
+		if (cached->content_type
+		    && (!c_strlcasecmp("text/gemini", 11, cached->content_type, -1)))
+			render_gemini_document(cached, document, &buffer);
+		else
+#ifdef CONFIG_XML
+			if (false) render_xhtml_document(cached, document, &buffer);
+			else
+#endif
+				render_html_document(cached, document, &buffer);
 	}
 
 	if (encoding != ENCODING_NONE) {
@@ -291,7 +309,7 @@ void
 render_document(struct view_state *vs, struct document_view *doc_view,
 		struct document_options *options)
 {
-	unsigned char *name;
+	char *name;
 	struct document *document;
 	struct cache_entry *cached;
 
@@ -331,7 +349,7 @@ render_document(struct view_state *vs, struct document_view *doc_view,
 		vs->doc_view->used = 0; /* A bit risky, but... */
 		vs->doc_view->vs = NULL;
 		vs->doc_view = NULL;
-#ifdef CONFIG_ECMASCRIPT_SMJS
+#if defined(CONFIG_ECMASCRIPT_SMJS) || defined(CONFIG_QUICKJS)
 		vs->ecmascript_fragile = 1; /* And is this good? ;-) */
 #endif
 	}
@@ -385,7 +403,7 @@ render_document(struct view_state *vs, struct document_view *doc_view,
 		document->css_magic = get_document_css_magic(document);
 #endif
 	}
-#ifdef CONFIG_ECMASCRIPT_SMJS
+#if defined(CONFIG_ECMASCRIPT_SMJS) || defined(CONFIG_QUICKJS)
 	if (!vs->ecmascript_fragile)
 		assert(vs->ecmascript);
 	if (!options->dump && !options->gradual_rerendering) {
@@ -425,6 +443,7 @@ render_document(struct view_state *vs, struct document_view *doc_view,
 			process_snippets(vs->ecmascript,
 					 &vs->ecmascript->onload_snippets,
 					 &vs->ecmascript->current_onload_snippet);
+			check_for_rerender(vs->ecmascript, "process_snippets");
 		}
 	}
 #endif
@@ -492,12 +511,17 @@ render_document_frames(struct session *ses, int no_cache)
 	}
 
 	foreach (doc_view, ses->scrn_frames) doc_view->used = 0;
+	foreach (doc_view, ses->scrn_iframes) doc_view->used = 0;
 
 	if (vs) render_document(vs, ses->doc_view, &doc_opts);
 
 	if (document_has_frames(ses->doc_view->document)) {
 		current_doc_view = current_frame(ses);
 		format_frames(ses, ses->doc_view->document->frame_desc, &doc_opts, 0);
+	}
+
+	if (document_has_iframes(ses->doc_view->document)) {
+		format_iframes(ses, ses->doc_view->document->iframe_desc, &doc_opts, 0);
 	}
 
 	foreach (doc_view, ses->scrn_frames) {
@@ -591,11 +615,11 @@ sort_links(struct document *document)
 }
 
 struct conv_table *
-get_convert_table(unsigned char *head, int to_cp,
+get_convert_table(char *head, int to_cp,
 		  int default_cp, int *from_cp,
 		  enum cp_status *cp_status, int ignore_server_cp)
 {
-	unsigned char *part = head;
+	char *part = head;
 	int cp_index = -1;
 
 	assert(head);
@@ -608,13 +632,13 @@ get_convert_table(unsigned char *head, int to_cp,
 	}
 
 	while (cp_index == -1) {
-		unsigned char *ct_charset;
+		char *ct_charset;
 		/* scan_http_equiv() appends the meta http-equiv directives to
 		 * the protocol header before this function is called, but the
 		 * HTTP Content-Type header has precedence, so the HTTP header
 		 * will be used if it exists and the meta header is only used
 		 * as a fallback.  See bug 983.  */
-		unsigned char *a = parse_header(part, "Content-Type", &part);
+		char *a = parse_header(part, "Content-Type", &part);
 
 		if (!a) break;
 
@@ -627,7 +651,7 @@ get_convert_table(unsigned char *head, int to_cp,
 	}
 
 	if (cp_index == -1) {
-		unsigned char *a = parse_header(head, "Content-Charset", NULL);
+		char *a = parse_header(head, "Content-Charset", NULL);
 
 		if (a) {
 			cp_index = get_cp_index(a);
@@ -636,7 +660,7 @@ get_convert_table(unsigned char *head, int to_cp,
 	}
 
 	if (cp_index == -1) {
-		unsigned char *a = parse_header(head, "Charset", NULL);
+		char *a = parse_header(head, "Charset", NULL);
 
 		if (a) {
 			cp_index = get_cp_index(a);

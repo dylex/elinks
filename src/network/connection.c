@@ -10,13 +10,18 @@
 #include <unistd.h>
 #endif
 
+#include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h> /* OS/2 needs this after sys/types.h */
+#endif
+
 #include "elinks.h"
 
 #include "cache/cache.h"
 #include "config/options.h"
 #include "document/document.h"
 #include "encoding/encoding.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/object.h"
 #include "main/select.h"
 #include "main/timer.h"

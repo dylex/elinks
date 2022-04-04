@@ -1,25 +1,9 @@
 #ifndef EL__ECMASCRIPT_SPIDERMONKEY_SHARED_H
 #define EL__ECMASCRIPT_SPIDERMONKEY_SHARED_H
 
-/* Tell SpiderMonkey headers which operating system will be used.
- * With standalone SpiderMonkey 1.8.5, "pkg-config --cflags mozjs185"
- * does not define such a macro, so ELinks must do that here.
- * With xulrunner 2.0 however, "pkg-config --cflags mozilla-js"
- * already outputs -DXP_UNIX or similar.  To prevent a warning about
- * macro redefinition, define the macro as 1, like -D does.  */
-#ifdef CONFIG_OS_BEOS
-#define XP_BEOS 1
-#elif CONFIG_OS_OS2
-#define XP_OS2 1
-#elif CONFIG_OS_RISCOS
-#error Out of luck, buddy!
-#elif CONFIG_OS_UNIX
-#define XP_UNIX 1
-#elif CONFIG_OS_WIN32
-#define XP_WIN 1
-#endif
-
 #include <jsapi.h>
+#include <jsfriendapi.h>
+#include <js/Conversions.h>
 
 #include "util/string.h"
 
@@ -53,22 +37,25 @@ JSObject *spidermonkey_InitClass(JSContext *cx, JSObject *obj,
 				 JSPropertySpec *static_ps,
 				 const spidermonkeyFunctionSpec *static_fs);
 
-static unsigned char *jsval_to_string(JSContext *ctx, JS::HandleValue hvp);
-static unsigned char *jsid_to_string(JSContext *ctx, JS::HandleId hid);
+bool spidermonkey_check_if_function_name(const spidermonkeyFunctionSpec funcs[], const char *string);
+
+static char *jsval_to_string(JSContext *ctx, JS::HandleValue hvp);
+static char *jsid_to_string(JSContext *ctx, JS::HandleId hid);
 
 /* Inline functions */
 
-static inline unsigned char *
+static inline char *
 jsval_to_string(JSContext *ctx, JS::HandleValue hvp)
 {
-//	JS::RootedValue r_vp(ctx, *vp);
-	JSString *str = hvp.toString();
-//JS::RootedString r_str(ctx, str);
+/* Memory must be freed in caller */
+	JSString *st = JS::ToString(ctx, hvp);
+	JS::RootedString rst(ctx, st);
+	JS::UniqueChars utf8chars = JS_EncodeStringToUTF8(ctx, rst);
 
-	return empty_string_or_(JS_EncodeString(ctx, str));
+	return null_or_stracpy(utf8chars.get());
 }
 
-static inline unsigned char *
+static inline char *
 jsid_to_string(JSContext *ctx, JS::HandleId hid)
 {
 	JS::RootedValue v(ctx);

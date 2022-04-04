@@ -25,9 +25,17 @@ static bool view_state_set_property(JSContext *ctx, JS::HandleObject hobj, JS::H
 static void view_state_finalize(JSFreeOp *op, JSObject *obj);
 
 static const JSClassOps view_state_ops = {
-	JS_PropertyStub, nullptr,
-	view_state_get_property, view_state_set_property,
-	nullptr, nullptr, nullptr, view_state_finalize
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass view_state_class = {
@@ -312,6 +320,6 @@ smjs_init_view_state_interface(void)
 	JS::RootedObject r_smjs_elinks_object(smjs_ctx, smjs_elinks_object);
 
 	JS_DefineProperty(smjs_ctx, r_smjs_elinks_object, "vs", (int32_t)0,
-		(unsigned int)(JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY), smjs_elinks_get_view_state, nullptr/*JS_StrictPropertyStub*/
+		(unsigned int)(JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY), smjs_elinks_get_view_state
 	);
 }

@@ -36,10 +36,17 @@ static void session_finalize(JSFreeOp *op, JSObject *obj);
 static bool session_construct(JSContext *ctx, unsigned int argc, JS::Value *rval);
 
 static const JSClassOps session_ops = {
-	JS_PropertyStub, nullptr,
-	session_get_property, session_set_property,
-	nullptr, nullptr, nullptr, session_finalize,
-	NULL, NULL, NULL, session_construct
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass session_class = {
@@ -52,9 +59,17 @@ static bool smjs_location_array_get_property(JSContext *ctx, JS::HandleObject ho
 static void smjs_location_array_finalize(JSFreeOp *op, JSObject *obj);
 
 static const JSClassOps location_array_ops = {
-	JS_PropertyStub, nullptr,
-	smjs_location_array_get_property, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, smjs_location_array_finalize,
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook{
 };
 
 static const JSClass location_array_class = {
@@ -675,13 +690,7 @@ session_set_property_search_direction(JSContext *ctx, unsigned int argc, JS::Val
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	if (!strcmp(str, "up"))
@@ -735,13 +744,7 @@ session_set_property_mark(JSContext *ctx, unsigned int argc, JS::Value *vp)
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	if (!strcmp(str, "nothing"))
@@ -774,13 +777,7 @@ session_set_property_insert_mode(JSContext *ctx, unsigned int argc, JS::Value *v
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	if (!strcmp(str, "disabled"))
@@ -813,13 +810,7 @@ session_set_property_navigate_mode(JSContext *ctx, unsigned int argc, JS::Value 
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	if (!strcmp(str, "cursor"))
@@ -850,13 +841,7 @@ session_set_property_search_word(JSContext *ctx, unsigned int argc, JS::Value *v
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	mem_free_set(&ses->search_word, str);
@@ -882,13 +867,7 @@ session_set_property_last_search_word(JSContext *ctx, unsigned int argc, JS::Val
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false;
 
-	unsigned char *str;
-	JSString *jsstr;
-
-	jsstr = args[0].toString();
-	if (!jsstr) return true;
-
-	str = JS_EncodeString(ctx, jsstr);
+	char *str = jsval_to_string(ctx, args[0]);
 	if (!str) return true;
 
 	mem_free_set(&ses->last_search_word, str);
@@ -1086,9 +1065,17 @@ session_array_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId h
 }
 
 static const JSClassOps session_array_ops = {
-	JS_PropertyStub, nullptr,
-	session_array_get_property, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass session_array_class = {
@@ -1145,7 +1132,7 @@ smjs_session_goto_url(JSContext *ctx, unsigned int argc, JS::Value *rval)
 	struct delayed_open *deo;
 	struct uri *uri;
 	JSString *jsstr;
-	unsigned char *url;
+	char *url;
 	struct session *ses;
 
 	if (argc != 1) return false;
@@ -1157,10 +1144,7 @@ smjs_session_goto_url(JSContext *ctx, unsigned int argc, JS::Value *rval)
 	                            (JSClass *) &session_class, NULL);
 	if (!ses) return false; /* detached */
 
-	jsstr = args[0].toString();
-	if (!jsstr) return false;
-
-	url = JS_EncodeString(ctx, jsstr);
+	url = jsval_to_string(ctx, args[0]);
 	if (!url) return false;
 
 	uri = get_uri(url, 0);

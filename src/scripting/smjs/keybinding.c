@@ -18,9 +18,17 @@ static bool keymap_set_property(JSContext *ctx, JS::HandleObject hobj, JS::Handl
 static void keymap_finalize(JSFreeOp *op, JSObject *obj);
 
 static const JSClassOps keymap_ops = {
-	JS_PropertyStub, nullptr,
-	keymap_get_property, keymap_set_property,
-	nullptr, nullptr, nullptr, keymap_finalize,
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass keymap_class = {
@@ -35,8 +43,8 @@ keymap_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 {
 	jsid id = hid.get();
 
-	unsigned char *action_str;
-	const unsigned char *keystroke_str;
+	char *action_str;
+	const char *keystroke_str;
 	int *data;
 	JS::Value tmp;
 	JS::RootedValue r_tmp(ctx, tmp);
@@ -55,7 +63,7 @@ keymap_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 	if (!JS_IdToValue(ctx, id, &r_tmp))
 		goto ret_null;
 
-	keystroke_str = JS_EncodeString(ctx, r_tmp.toString());
+	keystroke_str = jsval_to_string(ctx, r_tmp);
 	if (!keystroke_str) goto ret_null;
 
 	action_str = get_action_name_from_keystroke((enum keymap_id) *data,
@@ -105,8 +113,8 @@ keymap_set_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 	jsid id = hid.get();
 
 	int *data;
-	unsigned char *keymap_str;
-	const unsigned char *keystroke_str;
+	char *keymap_str;
+	const char *keystroke_str;
 
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
@@ -126,14 +134,14 @@ keymap_set_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 
 	JS::RootedValue rval(ctx);
 	JS_IdToValue(ctx, id, &rval);
-	keystroke_str = JS_EncodeString(ctx, rval.toString());
+	keystroke_str = jsval_to_string(ctx, rval);
 
 	if (!keystroke_str) return false;
 
 	if (hvp.isString()) {
-		unsigned char *action_str;
+		char *action_str;
 
-		action_str = JS_EncodeString(ctx, hvp.toString());
+		action_str = jsval_to_string(ctx, hvp);
 		if (!action_str) return false;
 
 		if (bind_do(keymap_str, keystroke_str, action_str, 0))
@@ -149,12 +157,12 @@ keymap_set_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 		return true;
 
 	} else if (hvp.isObject() || hvp.isNull()) {
-		unsigned char *err = NULL;
+		char *err = NULL;
 		int event_id;
 		struct string event_name = NULL_STRING;
 		JSObject *jsobj = &hvp.toObject();
 
-		if (false == JS_ObjectIsFunction(ctx, jsobj))
+		if (false == JS_ObjectIsFunction(jsobj))
 			return false;
 
 		if (!init_string(&event_name)) return false;
@@ -225,8 +233,8 @@ smjs_get_keymap_object(enum keymap_id keymap_id)
 }
 
 static const JSClassOps keymap_hash_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
+	nullptr, nullptr,
+	nullptr, nullptr,
 	nullptr, nullptr, nullptr, nullptr,
 };
 
@@ -249,7 +257,7 @@ smjs_get_keymap_hash_object(void)
 	JS::RootedValue r_val(smjs_ctx);
 
 	for (keymap_id = 0; keymap_id < KEYMAP_MAX; ++keymap_id) {
-		unsigned char *keymap_str = get_keymap_name(keymap_id);
+		char *keymap_str = get_keymap_name(keymap_id);
 		JSObject *map = smjs_get_keymap_object(keymap_id);
 
 		assert(keymap_str);

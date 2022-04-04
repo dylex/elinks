@@ -49,7 +49,7 @@ struct dialog_refresh {
 };
 
 struct dialog {
-	unsigned char *title;
+	char *title;
 	void *udata;
 	void *udata2;
 	struct dialog_refresh *refresh;
@@ -123,7 +123,7 @@ struct dialog {
  * @return
  *  The address of the additional data.  */
 #define get_dialog_offset(dlg, n) \
-	(((unsigned char *) dlg) + sizeof_dialog(n, 0))
+	(((char *) dlg) + sizeof_dialog(n, 0))
 
 #define dialog_has_refresh(dlg_data) \
 	((dlg_data)->dlg->refresh && (dlg_data)->dlg->refresh->timer != TIMER_ID_UNDEF)
@@ -131,7 +131,7 @@ struct dialog {
 static inline int
 dialog_max_width(struct terminal *term)
 {
-	int width = term->width * 9 / 10 - 2 * DIALOG_LB;
+	int width = term->width * DIALOG_WIDTH_RATIO - 2 * DIALOG_LB;
 
 	int_bounds(&width, 1, int_max(term->width - 2 * DIALOG_LB, 1));
 
@@ -141,7 +141,7 @@ dialog_max_width(struct terminal *term)
 static inline int
 dialog_max_height(struct terminal *term)
 {
-	int height = term->height * 9 / 10 - 2 * DIALOG_TB;
+	int height = term->height * DIALOG_HEIGHT_RATIO - 2 * DIALOG_TB;
 
 	int_bounds(&height, 1, int_max(term->height - 2 * DIALOG_TB, 1));
 

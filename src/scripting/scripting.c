@@ -7,7 +7,7 @@
 #include "elinks.h"
 
 #include "bfu/msgbox.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/module.h"
 #include "scripting/scripting.h"
 #include "session/session.h"
@@ -34,7 +34,7 @@
 #if defined(CONFIG_SCRIPTING_RUBY) || defined(CONFIG_SCRIPTING_SPIDERMONKEY) || defined(CONFIG_SCRIPTING_PYTHON)
 void
 report_scripting_error(struct module *module, struct session *ses,
-		       unsigned char *msg)
+		       char *msg)
 {
 	struct terminal *term;
 	struct string string;

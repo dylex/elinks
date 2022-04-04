@@ -9,13 +9,27 @@
 #include "config.h"
 #endif
 
+#ifdef CONFIG_ECMASCRIPT_SMJS
+#include <jsapi.h>
+#endif
+
+#ifdef CONFIG_QUICKJS
+#include <quickjs/quickjs.h>
+#endif
+
 #ifdef CONFIG_ECMASCRIPT
 
-#include <jsapi.h>
-
 #include "main/module.h"
+#include "main/timer.h"
 #include "util/time.h"
 
+//#define ECMASCRIPT_DEBUG 1
+
+#ifdef ECMASCRIPT_DEBUG
+#include <stdio.h>
+#endif
+
+struct document_view;
 struct form_state;
 struct form_view;
 struct string;
@@ -62,8 +76,26 @@ struct ecmascript_interpreter {
 	unsigned int onload_snippets_cache_id;
 	void *ac;
 	void *ac2;
-	void *ar;
+#ifdef CONFIG_QUICKJS
+	JSValue document_obj;
+	JSValue location_obj;
+#else
+	void *document_obj;
+	void *location_obj;
+#endif
+#ifdef CONFIG_QUICKJS
+	JSValueConst fun;
+#else
 	JS::RootedValue fun;
+#endif
+	bool changed;
+};
+
+struct delayed_goto {
+	/* It might look more convenient to pass doc_view around but it could
+	 * disappear during wild dances inside of frames or so. */
+	struct view_state *vs;
+	struct uri *uri;
 };
 
 /* Why is the interpreter bound to {struct view_state} instead of {struct
@@ -77,7 +109,7 @@ struct ecmascript_interpreter {
  * reset for each rerendering, and it sucks to do all the magic to preserve the
  * interpreter over the rerenderings (we tried). */
 
-int ecmascript_check_url(unsigned char *url, unsigned char *frame);
+int ecmascript_check_url(char *url, char *frame);
 void ecmascript_free_urls(struct module *module);
 
 struct ecmascript_interpreter *ecmascript_get_interpreter(struct view_state*vs);
@@ -91,7 +123,7 @@ void ecmascript_moved_form_state(struct form_state *fs);
 void ecmascript_reset_state(struct view_state *vs);
 
 void ecmascript_eval(struct ecmascript_interpreter *interpreter, struct string *code, struct string *ret);
-unsigned char *ecmascript_eval_stringback(struct ecmascript_interpreter *interpreter, struct string *code);
+char *ecmascript_eval_stringback(struct ecmascript_interpreter *interpreter, struct string *code);
 /* Returns -1 if undefined. */
 int ecmascript_eval_boolback(struct ecmascript_interpreter *interpreter, struct string *code);
 
@@ -101,13 +133,33 @@ void ecmascript_protocol_handler(struct session *ses, struct uri *uri);
 
 void ecmascript_timeout_dialog(struct terminal *term, int max_exec_time);
 
-void ecmascript_set_action(unsigned char **action, unsigned char *string);
+void ecmascript_set_action(char **action, char *string);
 
-void ecmascript_set_timeout(struct ecmascript_interpreter *interpreter, unsigned char *code, int timeout);
+timer_id_T ecmascript_set_timeout(struct ecmascript_interpreter *interpreter, char *code, int timeout);
 
-void ecmascript_set_timeout2(struct ecmascript_interpreter *interpreter, JS::HandleValue f, int timeout);
+#ifdef CONFIG_ECMASCRIPT_SMJS
+timer_id_T ecmascript_set_timeout2(struct ecmascript_interpreter *interpreter, JS::HandleValue f, int timeout);
+#endif
+
+#ifdef CONFIG_QUICKJS
+timer_id_T ecmascript_set_timeout2q(struct ecmascript_interpreter *interpreter, JSValue f, int timeout);
+#endif
 
 int get_ecmascript_enable(struct ecmascript_interpreter *interpreter);
+
+void check_for_rerender(struct ecmascript_interpreter *interpreter, const char* text);
+
+void toggle_ecmascript(struct session *ses);
+
+void *document_parse(struct document *document);
+void free_document(void *doc);
+void location_goto(struct document_view *doc_view, char *url);
+
+extern char *console_error_filename;
+extern char *console_log_filename;
+
+extern char *local_storage_filename;
+extern int local_storage_ready;
 
 extern struct module ecmascript_module;
 

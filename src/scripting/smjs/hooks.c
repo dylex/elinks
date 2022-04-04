@@ -24,7 +24,7 @@
 static enum evhook_status
 script_hook_url(va_list ap, void *data)
 {
-	unsigned char **url = va_arg(ap, unsigned char **);
+	char **url = va_arg(ap, char **);
 	struct session *ses = va_arg(ap, struct session *);
 	enum evhook_status ret = EVENT_HOOK_STATUS_NEXT;
 
@@ -33,8 +33,7 @@ script_hook_url(va_list ap, void *data)
 
 	if (*url == NULL) return EVENT_HOOK_STATUS_NEXT;
 
-	JS_BeginRequest(smjs_ctx);
-	JSCompartment *prev = JS_EnterCompartment(smjs_ctx, smjs_elinks_object);
+	JS::Realm *prev = JS::EnterRealm(smjs_ctx, smjs_elinks_object);
 
 	smjs_ses = ses;
 	args[2].setString(JS_NewStringCopyZ(smjs_ctx, *url));
@@ -44,16 +43,14 @@ script_hook_url(va_list ap, void *data)
 			if (false == (r_rval.toBoolean()))
 				ret = EVENT_HOOK_STATUS_LAST;
 		} else {
-			JSString *jsstr = r_rval.toString();
-			unsigned char *str = JS_EncodeString(smjs_ctx, jsstr);
+			char *str = jsval_to_string(smjs_ctx, r_rval);
 
 			mem_free_set(url, stracpy(str));
 		}
 	}
 
 	smjs_ses = NULL;
-	JS_LeaveCompartment(smjs_ctx, prev);
-	JS_EndRequest(smjs_ctx);
+	JS::LeaveRealm(smjs_ctx, prev);
 
 	return ret;
 }
@@ -68,8 +65,7 @@ script_hook_pre_format_html(va_list ap, void *data)
 	JS::Value args[4];
 	JS::RootedValue r_rval(smjs_ctx);
 
-	JS_BeginRequest(smjs_ctx);
-	JSCompartment *prev = JS_EnterCompartment(smjs_ctx, smjs_elinks_object);
+	JS::Realm *prev = JS::EnterRealm(smjs_ctx, smjs_elinks_object);
 
 	evhook_use_params(ses && cached);
 
@@ -80,7 +76,7 @@ script_hook_pre_format_html(va_list ap, void *data)
 	smjs_ses = ses;
 
 
-	if (have_location(ses)) {
+	if (ses && have_location(ses)) {
 		struct view_state *vs = &cur_loc(ses)->vs;
 
 		view_state_object = smjs_get_view_state_object(vs);
@@ -100,8 +96,7 @@ script_hook_pre_format_html(va_list ap, void *data)
 
 
 end:
-	JS_LeaveCompartment(smjs_ctx, prev);
-	JS_EndRequest(smjs_ctx);
+	JS::LeaveRealm(smjs_ctx, prev);
 	smjs_ses = NULL;
 	return ret;
 }

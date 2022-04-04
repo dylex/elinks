@@ -35,7 +35,7 @@ spidermonkey_runtime_addref(void)
 			return 0;
 		}
 
-		main_ctx = JS_NewContext(16 * 1024 * 1024);
+		main_ctx = JS_NewContext(64 * 1024 * 1024);
 
 		if (!main_ctx) {
 			JS_ShutDown();
@@ -123,4 +123,16 @@ spidermonkey_InitClass(JSContext *cx, JSObject *obj,
 	}
 
 	return proto;
+}
+
+bool
+spidermonkey_check_if_function_name(const spidermonkeyFunctionSpec funcs[], const char *string)
+{
+	for (int i = 0; funcs[i].name; i++) {
+		if (!strcmp(funcs[i].name, string)) {
+			return true;
+		}
+	}
+
+	return false;
 }

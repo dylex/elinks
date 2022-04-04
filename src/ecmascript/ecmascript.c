@@ -11,12 +11,22 @@
 
 #include "config/home.h"
 #include "config/options.h"
+#include "dialogs/status.h"
 #include "document/document.h"
+#include "document/renderer.h"
 #include "document/view.h"
+#include "document/xml/renderer.h"
+#include "document/xml/renderer2.h"
 #include "ecmascript/ecmascript.h"
+#ifdef CONFIG_QUICKJS
+#include "ecmascript/quickjs.h"
+#else
 #include "ecmascript/spidermonkey.h"
-#include "intl/gettext/libintl.h"
+#endif
+#include "ecmascript/timer.h"
+#include "intl/libintl.h"
 #include "main/module.h"
+#include "main/select.h"
 #include "main/timer.h"
 #include "osdep/osdep.h"
 #include "protocol/protocol.h"
@@ -27,10 +37,18 @@
 #include "terminal/window.h"
 #include "util/conv.h"
 #include "util/string.h"
+#include "viewer/text/draw.h"
 #include "viewer/text/view.h" /* current_frame() */
 #include "viewer/text/form.h" /* <-ecmascript_reset_state() */
 #include "viewer/text/vs.h"
 
+#include <libxml/tree.h>
+#include <libxml/HTMLparser.h>
+#include <libxml++/libxml++.h>
+
+#include <map>
+
+std::map<struct timer *, bool> map_timer;
 
 /* TODO: We should have some kind of ACL for the scripts - i.e. ability to
  * disallow the scripts to open new windows (or so that the windows are always
@@ -46,6 +64,10 @@ static union option_info ecmascript_options[] = {
 	INIT_OPT_BOOL("ecmascript", N_("Enable"),
 		"enable", 0, 0,
 		N_("Whether to run those scripts inside of documents.")),
+
+	INIT_OPT_BOOL("ecmascript", N_("Console log"),
+		"enable_console_log", 0, 0,
+		N_("When enabled logs will be appended to ~/.elinks/console.log.")),
 
 	INIT_OPT_BOOL("ecmascript", N_("Script error reporting"),
 		"error_reporting", 0, 0,
@@ -70,9 +92,17 @@ static union option_info ecmascript_options[] = {
 static int interpreter_count;
 
 static INIT_LIST_OF(struct string_list_item, allowed_urls);
+static INIT_LIST_OF(struct string_list_item, disallowed_urls);
+
+char *console_error_filename;
+char *console_log_filename;
+
+char *local_storage_filename;
+
+int local_storage_ready;
 
 static int
-is_prefix(unsigned char *prefix, unsigned char *url, int dl)
+is_prefix(char *prefix, char *url, int dl)
 {
 	return memcmp(prefix, url, dl);
 }
@@ -81,7 +111,7 @@ static void
 read_url_list(void)
 {
 	char line[4096];
-	unsigned char *filename;
+	char *filename;
 	FILE *f;
 
 	if (!elinks_home) {
@@ -90,40 +120,82 @@ read_url_list(void)
 
 	filename = straconcat(elinks_home, STRING_DIR_SEP, ALLOWED_ECMASCRIPT_URL_PREFIXES, NULL);
 
-	if (!filename) {
-		return;
-	}
+	if (filename) {
 
-	f = fopen(filename, "r");
+		f = fopen(filename, "r");
 
-	if (f) {
-		while (fgets(line, 4096, f)) {
-			add_to_string_list(&allowed_urls, line, strlen(line) - 1);
+		if (f) {
+			while (fgets(line, 4096, f)) {
+				add_to_string_list(&allowed_urls, line, strlen(line) - 1);
+			}
+			fclose(f);
 		}
-		fclose(f);
+		mem_free(filename);
 	}
-	mem_free(filename);
+
+	filename = straconcat(elinks_home, STRING_DIR_SEP, DISALLOWED_ECMASCRIPT_URL_PREFIXES, NULL);
+
+	if (filename) {
+
+		f = fopen(filename, "r");
+
+		if (f) {
+			while (fgets(line, 4096, f)) {
+				add_to_string_list(&disallowed_urls, line, strlen(line) - 1);
+			}
+			fclose(f);
+		}
+		mem_free(filename);
+	}
+}
+
+static int ecmascript_enabled;
+
+void
+toggle_ecmascript(struct session *ses)
+{
+	ecmascript_enabled = !ecmascript_enabled;
+
+	if (ecmascript_enabled) {
+		mem_free_set(&ses->status.window_status, stracpy(_("Ecmascript enabled", ses->tab->term)));
+	} else {
+		mem_free_set(&ses->status.window_status, stracpy(_("Ecmascript disabled", ses->tab->term)));
+	}
+	print_screen_status(ses);
 }
 
 int
 get_ecmascript_enable(struct ecmascript_interpreter *interpreter)
 {
 	struct string_list_item *item;
-	unsigned char *url;
+	char *url;
 
-	if (!get_opt_bool("ecmascript.enable", NULL)
+	if (!ecmascript_enabled || !get_opt_bool("ecmascript.enable", NULL)
 	|| !interpreter || !interpreter->vs || !interpreter->vs->doc_view
 	|| !interpreter->vs->doc_view->document || !interpreter->vs->doc_view->document->uri) {
 		return 0;
 	}
 
-	if (list_empty(allowed_urls)) {
+	if (list_empty(allowed_urls) && list_empty(disallowed_urls)) {
 		return 1;
 	}
 
 	url = get_uri_string(interpreter->vs->doc_view->document->uri, URI_PUBLIC);
 	if (!url) {
 		return 0;
+	}
+
+	foreach(item, disallowed_urls) {
+		struct string *string = &item->string;
+
+		if (string->length <= 0) {
+			continue;
+		}
+		if (!is_prefix(string->source, url, string->length)) {
+			mem_free(url);
+			move_to_top_of_list(disallowed_urls, item);
+			return 0;
+		}
 	}
 
 	foreach(item, allowed_urls) {
@@ -140,7 +212,7 @@ get_ecmascript_enable(struct ecmascript_interpreter *interpreter)
 	}
 
 	mem_free(url);
-	return 0;
+	return list_empty(allowed_urls);
 }
 
 
@@ -162,7 +234,11 @@ ecmascript_get_interpreter(struct view_state *vs)
 	init_list(interpreter->onload_snippets);
 	/* The following backend call reads interpreter->vs.  */
 	if (
+#ifdef CONFIG_QUICKJS
+	    !quickjs_get_interpreter(interpreter)
+#else
 	    !spidermonkey_get_interpreter(interpreter)
+#endif
 	    ) {
 		/* Undo what was done above.  */
 		interpreter->vs->ecmascript_fragile = 1;
@@ -183,8 +259,11 @@ ecmascript_put_interpreter(struct ecmascript_interpreter *interpreter)
 	/* If the assertion fails, it is better to leak the
 	 * interpreter than to corrupt memory.  */
 	if_assert_failed return;
-
+#ifdef CONFIG_QUICKJS
+	quickjs_put_interpreter(interpreter);
+#else
 	spidermonkey_put_interpreter(interpreter);
+#endif
 	free_string_list(&interpreter->onload_snippets);
 	done_string(&interpreter->code);
 	/* Is it superfluous? */
@@ -202,6 +281,50 @@ ecmascript_get_interpreter_count(void)
 	return interpreter_count;
 }
 
+static void
+delayed_reload(void *data)
+{
+	struct delayed_rel *rel = data;
+
+	assert(rel);
+	reset_document(rel->document);
+	render_xhtml_document(rel->cached, rel->document, NULL);
+	sort_links(rel->document);
+	draw_formatted(rel->ses, 0);
+	mem_free(rel);
+}
+
+void
+check_for_rerender(struct ecmascript_interpreter *interpreter, const char* text)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %s %d\n", __FILE__, __FUNCTION__, text, interpreter->changed);
+#endif
+	if (interpreter->changed) {
+		struct document_view *doc_view = interpreter->vs->doc_view;
+		struct document *document = doc_view->document;
+		struct session *ses = doc_view->session;
+		struct cache_entry *cached = document->cached;
+		struct fragment *f = get_cache_fragment(cached);
+
+		//fprintf(stderr, "%s\n", text);
+
+		if (document->dom) {
+			interpreter->changed = false;
+
+			struct delayed_rel *rel = mem_calloc(1, sizeof(*rel));
+
+			if (rel) {
+				rel->cached = cached;
+				rel->document = document;
+				rel->ses = ses;
+				object_lock(document);
+				register_bottom_half(delayed_reload, rel);
+			}
+		}
+	}
+}
+
 void
 ecmascript_eval(struct ecmascript_interpreter *interpreter,
                 struct string *code, struct string *ret)
@@ -210,35 +333,55 @@ ecmascript_eval(struct ecmascript_interpreter *interpreter,
 		return;
 	assert(interpreter);
 	interpreter->backend_nesting++;
+#ifdef CONFIG_QUICKJS
+	quickjs_eval(interpreter, code, ret);
+#else
 	spidermonkey_eval(interpreter, code, ret);
+#endif
 	interpreter->backend_nesting--;
 }
 
+#ifdef CONFIG_QUICKJS
+static void
+ecmascript_call_function(struct ecmascript_interpreter *interpreter,
+                JSValueConst fun, struct string *ret)
+#else
 static void
 ecmascript_call_function(struct ecmascript_interpreter *interpreter,
                 JS::HandleValue fun, struct string *ret)
+#endif
 {
 	if (!get_ecmascript_enable(interpreter))
 		return;
 	assert(interpreter);
 	interpreter->backend_nesting++;
+#ifdef CONFIG_QUICKJS
+	quickjs_call_function(interpreter, fun, ret);
+#else
 	spidermonkey_call_function(interpreter, fun, ret);
+#endif
 	interpreter->backend_nesting--;
 }
 
-
-unsigned char *
+char *
 ecmascript_eval_stringback(struct ecmascript_interpreter *interpreter,
 			   struct string *code)
 {
-	unsigned char *result;
+	char *result;
 
 	if (!get_ecmascript_enable(interpreter))
 		return NULL;
 	assert(interpreter);
 	interpreter->backend_nesting++;
+#ifdef CONFIG_QUICKJS
+	result = quickjs_eval_stringback(interpreter, code);
+#else
 	result = spidermonkey_eval_stringback(interpreter, code);
+#endif
 	interpreter->backend_nesting--;
+
+	check_for_rerender(interpreter, "stringback");
+
 	return result;
 }
 
@@ -252,25 +395,44 @@ ecmascript_eval_boolback(struct ecmascript_interpreter *interpreter,
 		return -1;
 	assert(interpreter);
 	interpreter->backend_nesting++;
+#ifdef CONFIG_QUICKJS
+	result = quickjs_eval_boolback(interpreter, code);
+#else
 	result = spidermonkey_eval_boolback(interpreter, code);
+#endif
 	interpreter->backend_nesting--;
+
+	check_for_rerender(interpreter, "boolback");
+
 	return result;
 }
 
 void
 ecmascript_detach_form_view(struct form_view *fv)
 {
+#ifdef CONFIG_QUICKJS
+	quickjs_detach_form_view(fv);
+#else
 	spidermonkey_detach_form_view(fv);
+#endif
 }
 
 void ecmascript_detach_form_state(struct form_state *fs)
 {
+#ifdef CONFIG_QUICKJS
+	quickjs_detach_form_state(fs);
+#else
 	spidermonkey_detach_form_state(fs);
+#endif
 }
 
 void ecmascript_moved_form_state(struct form_state *fs)
 {
+#ifdef CONFIG_QUICKJS
+	quickjs_moved_form_state(fs);
+#else
 	spidermonkey_moved_form_state(fs);
+#endif
 }
 
 void
@@ -302,7 +464,7 @@ ecmascript_protocol_handler(struct session *ses, struct uri *uri)
 {
 	struct document_view *doc_view = current_frame(ses);
 	struct string current_url = INIT_STRING(struri(uri), strlen(struri(uri)));
-	unsigned char *redirect_url, *redirect_abs_url;
+	char *redirect_url, *redirect_abs_url;
 	struct uri *redirect_uri;
 
 	if (!doc_view) /* Blank initial document. TODO: Start at about:blank? */
@@ -351,7 +513,7 @@ ecmascript_timeout_dialog(struct terminal *term, int max_exec_time)
 }
 
 void
-ecmascript_set_action(unsigned char **action, unsigned char *string)
+ecmascript_set_action(char **action, char *string)
 {
 	struct uri *protocol;
 
@@ -366,19 +528,19 @@ ecmascript_set_action(unsigned char **action, unsigned char *string)
 			struct uri *uri = get_uri(*action, URI_HTTP_REFERRER_HOST);
 
 			if (uri->protocol == PROTOCOL_FILE) {
-				mem_free_set(action, straconcat(struri(uri), string, (unsigned char *) NULL));
+				mem_free_set(action, straconcat(struri(uri), string, (char *) NULL));
 			}
 			else
-				mem_free_set(action, straconcat(struri(uri), string + 1, (unsigned char *) NULL));
+				mem_free_set(action, straconcat(struri(uri), string + 1, (char *) NULL));
 			done_uri(uri);
 			mem_free(string);
 		} else { /* relative uri */
-			unsigned char *last_slash = strrchr((const char *)*action, '/');
-			unsigned char *new_action;
+			char *last_slash = strrchr((const char *)*action, '/');
+			char *new_action;
 
 			if (last_slash) *(last_slash + 1) = '\0';
 			new_action = straconcat(*action, string,
-						(unsigned char *) NULL);
+						(char *) NULL);
 			mem_free_set(action, new_action);
 			mem_free(string);
 		}
@@ -400,8 +562,10 @@ ecmascript_timeout_handler(void *i)
 	/* The expired timer ID has now been erased.  */
 
 	ecmascript_eval(interpreter, &interpreter->code, NULL);
+	check_for_rerender(interpreter, "handler");
 }
 
+#if defined(CONFIG_ECMASCRIPT_SMJS) || defined(CONFIG_QUICKJS)
 /* Timer callback for @interpreter->vs->doc_view->document->timeout.
  * As explained in @install_timer, this function must erase the
  * expired timer ID from all variables.  */
@@ -417,54 +581,178 @@ ecmascript_timeout_handler2(void *i)
 	/* The expired timer ID has now been erased.  */
 
 	ecmascript_call_function(interpreter, interpreter->fun, NULL);
+	check_for_rerender(interpreter, "handler2");
 }
+#endif
 
-
-void
-ecmascript_set_timeout(struct ecmascript_interpreter *interpreter, unsigned char *code, int timeout)
+timer_id_T
+ecmascript_set_timeout(struct ecmascript_interpreter *interpreter, char *code, int timeout)
 {
 	assert(interpreter && interpreter->vs->doc_view->document);
-	if (!code) return;
+	if (!code) return nullptr;
 	done_string(&interpreter->code);
 	init_string(&interpreter->code);
 	add_to_string(&interpreter->code, code);
 	mem_free(code);
-	kill_timer(&interpreter->vs->doc_view->document->timeout);
+	if (found_in_map_timer(interpreter->vs->doc_view->document->timeout)) {
+		kill_timer(&interpreter->vs->doc_view->document->timeout);
+	}
 	install_timer(&interpreter->vs->doc_view->document->timeout, timeout, ecmascript_timeout_handler, interpreter);
+
+	return interpreter->vs->doc_view->document->timeout;
 }
 
-void
+#ifdef CONFIG_ECMASCRIPT_SMJS
+timer_id_T
 ecmascript_set_timeout2(struct ecmascript_interpreter *interpreter, JS::HandleValue f, int timeout)
 {
 	assert(interpreter && interpreter->vs->doc_view->document);
 	done_string(&interpreter->code);
 	init_string(&interpreter->code);
-	kill_timer(&interpreter->vs->doc_view->document->timeout);
+	if (found_in_map_timer(interpreter->vs->doc_view->document->timeout)) {
+		kill_timer(&interpreter->vs->doc_view->document->timeout);
+	}
 	JS::RootedValue fun((JSContext *)interpreter->backend_data, f);
 	interpreter->fun = fun;
 	install_timer(&interpreter->vs->doc_view->document->timeout, timeout, ecmascript_timeout_handler2, interpreter);
+
+	return interpreter->vs->doc_view->document->timeout;
 }
+#endif
+
+#ifdef CONFIG_QUICKJS
+timer_id_T
+ecmascript_set_timeout2q(struct ecmascript_interpreter *interpreter, JSValueConst fun, int timeout)
+{
+	assert(interpreter && interpreter->vs->doc_view->document);
+	done_string(&interpreter->code);
+	init_string(&interpreter->code);
+	if (found_in_map_timer(interpreter->vs->doc_view->document->timeout)) {
+		kill_timer(&interpreter->vs->doc_view->document->timeout);
+	}
+	interpreter->fun = fun;
+	install_timer(&interpreter->vs->doc_view->document->timeout, timeout, ecmascript_timeout_handler2, interpreter);
+
+	return interpreter->vs->doc_view->document->timeout;
+}
+#endif
 
 static void
 init_ecmascript_module(struct module *module)
 {
 	read_url_list();
+
+	if (elinks_home) {
+		/* ecmascript console log */
+		console_log_filename = straconcat(elinks_home, "/console.log", NULL);
+		console_error_filename = straconcat(elinks_home, "/console.err", NULL);
+		/* ecmascript local storage db location */
+		local_storage_filename = straconcat(elinks_home, "/elinks_ls.db", NULL);
+	}
+	ecmascript_enabled = get_opt_bool("ecmascript.enable", NULL);
 }
 
 static void
 done_ecmascript_module(struct module *module)
 {
 	free_string_list(&allowed_urls);
+	mem_free_if(console_log_filename);
+	mem_free_if(local_storage_filename);
 }
 
 static struct module *ecmascript_modules[] = {
 #ifdef CONFIG_ECMASCRIPT_SMJS
 	&spidermonkey_module,
 #endif
+#ifdef CONFIG_QUICKJS
+	&quickjs_module,
+#endif
 	NULL,
 };
 
+void
+free_document(void *doc)
+{
+	if (!doc) {
+		return;
+	}
+	xmlpp::Document *docu = doc;
+	delete docu;
+}
 
+void *
+document_parse(struct document *document)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+	struct cache_entry *cached = document->cached;
+	struct fragment *f = get_cache_fragment(cached);
+
+	if (!f || !f->length) {
+		return NULL;
+	}
+
+	struct string str;
+	init_string(&str);
+
+	add_bytes_to_string(&str, f->data, f->length);
+
+	// Parse HTML and create a DOM tree
+	xmlDoc* doc = htmlReadDoc((xmlChar*)str.source, NULL, get_cp_mime_name(document->cp),
+	HTML_PARSE_RECOVER | HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
+	// Encapsulate raw libxml document in a libxml++ wrapper
+	xmlpp::Document *docu = new xmlpp::Document(doc);
+	done_string(&str);
+
+	return (void *)docu;
+}
+
+static void
+delayed_goto(void *data)
+{
+	struct delayed_goto *deg = data;
+
+	assert(deg);
+	if (deg->vs->doc_view
+	    && deg->vs->doc_view == deg->vs->doc_view->session->doc_view) {
+		goto_uri_frame(deg->vs->doc_view->session, deg->uri,
+		               deg->vs->doc_view->name,
+			       CACHE_MODE_NORMAL);
+	}
+	done_uri(deg->uri);
+	mem_free(deg);
+}
+
+void
+location_goto(struct document_view *doc_view, char *url)
+{
+	char *new_abs_url;
+	struct uri *new_uri;
+	struct delayed_goto *deg;
+
+	/* Workaround for bug 611. Does not crash, but may lead to infinite loop.*/
+	if (!doc_view) return;
+	new_abs_url = join_urls(doc_view->document->uri,
+	                        trim_chars(url, ' ', 0));
+	if (!new_abs_url)
+		return;
+	new_uri = get_uri(new_abs_url, 0);
+	mem_free(new_abs_url);
+	if (!new_uri)
+		return;
+	deg = mem_calloc(1, sizeof(*deg));
+	if (!deg) {
+		done_uri(new_uri);
+		return;
+	}
+	assert(doc_view->vs);
+	deg->vs = doc_view->vs;
+	deg->uri = new_uri;
+	/* It does not seem to be very safe inside of frames to
+	 * call goto_uri() right away. */
+	register_bottom_half(delayed_goto, deg);
+}
 
 struct module ecmascript_module = struct_module(
 	/* name: */		N_("ECMAScript"),

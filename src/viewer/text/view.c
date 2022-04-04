@@ -28,7 +28,7 @@
 #include "document/renderer.h"
 #include "document/view.h"
 #include "intl/charsets.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/event.h"
 #include "osdep/osdep.h"
 #include "protocol/uri.h"
@@ -68,11 +68,10 @@ detach_formatted(struct document_view *doc_view)
 	assert(doc_view);
 	if_assert_failed return;
 
-#ifdef CONFIG_ECMASCRIPT
 	if (doc_view->session) {
 		mem_free_set(&doc_view->session->status.window_status, NULL);
 	}
-#endif
+
 	if (doc_view->document) {
 		release_document(doc_view->document);
 		doc_view->document = NULL;
@@ -104,8 +103,9 @@ move_down(struct session *ses, struct document_view *doc_view, int type, int ove
 	if (newpos < doc_view->document->height)
 		doc_view->vs->y = newpos;
 
-	if (current_link_is_visible(doc_view))
+	if (current_link_is_visible(doc_view)) {
 		return;
+	}
 
 	if (type)
 		find_link_down(doc_view);
@@ -207,6 +207,8 @@ move_link(struct session *ses, struct document_view *doc_view, int direction,
 {
 	int wraparound = 0;
 	int count;
+	int cur = doc_view->vs->current_link;
+	int oldy = doc_view->vs->y;
 
 	assert(ses && doc_view && doc_view->vs && doc_view->document);
 	if_assert_failed return FRAME_EVENT_OK;
@@ -266,7 +268,7 @@ move_link(struct session *ses, struct document_view *doc_view, int direction,
 		}
 	} while (--count > 0);
 
-	return FRAME_EVENT_REFRESH;
+	return (doc_view->vs->y == oldy && cur == doc_view->vs->current_link) ? FRAME_EVENT_OK : FRAME_EVENT_REFRESH;
 }
 
 enum frame_event_status
@@ -1110,7 +1112,7 @@ copy_current_link_to_clipboard(struct session *ses,
 {
 	struct link *link;
 	struct uri *uri;
-	unsigned char *uristring;
+	char *uristring;
 
 	link = get_current_link(doc_view);
 	if (!link) return FRAME_EVENT_OK;
@@ -1205,7 +1207,7 @@ open_link_dialog(struct session *ses)
 	input_dialog(ses->tab->term, NULL,
 		N_("Go to link"), N_("Enter link number"),
 		ses, NULL, MAX_STR_LEN, "", 0, 0, NULL,
-		(void (*)(void *, unsigned char *)) goto_link_symbol, NULL);
+		(void (*)(void *, char *)) goto_link_symbol, NULL);
 }
 
 static enum frame_event_status
@@ -1225,7 +1227,7 @@ try_prefix_key(struct session *ses, struct document_view *doc_view,
 	    || ses->kbdprefix.repeat_count /* The user has already begun
 	                                    * entering a prefix. */
 	    || !doc_opts->num_links_key
-	    || (doc_opts->num_links_key == 1 && !doc_opts->links_numbering)) {
+	    || (doc_opts->num_links_key == 1 && (!doc_opts->links_numbering || !doc_opts->links_show_goto))) {
 	        int old_count = ses->kbdprefix.repeat_count;
 		int new_count = old_count * 10 + digit;
 
@@ -1246,7 +1248,7 @@ try_prefix_key(struct session *ses, struct document_view *doc_view,
 
 	if (digit >= 1 && get_kbd_modifier(ev) == KBD_MOD_NONE) {
 		int nlinks = document->nlinks, length;
-		unsigned char d[2] = { get_kbd_key(ev), 0 };
+		char d[2] = { get_kbd_key(ev), 0 };
 
 		set_kbd_repeat_count(ses, 0);
 
@@ -1259,7 +1261,7 @@ try_prefix_key(struct session *ses, struct document_view *doc_view,
 			     N_("Go to link"), N_("Enter link number"),
 			     ses, NULL,
 			     length, d, 1, document->nlinks, check_number,
-			     (void (*)(void *, unsigned char *)) goto_link_number, NULL);
+			     (void (*)(void *, char *)) goto_link_number, NULL);
 
 		return FRAME_EVENT_OK;
 	}
@@ -1451,6 +1453,11 @@ current_frame(struct session *ses)
 
 	foreach (doc_view, ses->scrn_frames) {
 		if (document_has_frames(doc_view->document)) continue;
+		if (!current_frame_number--) return doc_view;
+	}
+
+	foreach (doc_view, ses->scrn_iframes) {
+		if (document_has_iframes(doc_view->document)) continue;
 		if (!current_frame_number--) return doc_view;
 	}
 
@@ -1757,7 +1764,7 @@ download_link(struct session *ses, struct document_view *doc_view,
 	      action_id_T action_id)
 {
 	struct link *link = get_current_link(doc_view);
-	void (*download)(void *ses, unsigned char *file) = start_download;
+	void (*download)(void *ses, char *file) = start_download;
 
 	if (!link) return FRAME_EVENT_OK;
 
@@ -1842,7 +1849,7 @@ save_formatted_finish(struct terminal *term, int h,
 }
 
 static void
-save_formatted(void *data, unsigned char *file)
+save_formatted(void *data, char *file)
 {
 	struct session *ses = data;
 	struct document_view *doc_view;

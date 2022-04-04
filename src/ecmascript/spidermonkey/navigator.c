@@ -23,7 +23,7 @@
 #include "document/view.h"
 #include "ecmascript/ecmascript.h"
 #include "ecmascript/spidermonkey/navigator.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/select.h"
 #include "osdep/newwin.h"
 #include "osdep/sysname.h"
@@ -51,10 +51,26 @@ static bool navigator_get_property_language(JSContext *ctx, unsigned int argc, J
 static bool navigator_get_property_platform(JSContext *ctx, unsigned int argc, JS::Value *vp);
 static bool navigator_get_property_userAgent(JSContext *ctx, unsigned int argc, JS::Value *vp);
 
+static void
+navigator_finalize(JSFreeOp *op, JSObject *obj)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+}
+
 JSClassOps navigator_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	navigator_finalize,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	JS_GlobalObjectTraceHook
 };
 
 JSClass navigator_class = {
@@ -93,6 +109,9 @@ JSPropertySpec navigator_props[] = {
 static bool
 navigator_get_property_appCodeName(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setString(JS_NewStringCopyZ(ctx, "Mozilla")); /* More like a constant nowadays. */
 
@@ -102,6 +121,9 @@ navigator_get_property_appCodeName(JSContext *ctx, unsigned int argc, JS::Value 
 static bool
 navigator_get_property_appName(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setString(JS_NewStringCopyZ(ctx,
 	"ELinks (roughly compatible with Netscape Navigator, Mozilla and Microsoft Internet Explorer)"));
@@ -112,6 +134,9 @@ navigator_get_property_appName(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 navigator_get_property_appVersion(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setString(JS_NewStringCopyZ(ctx, VERSION));
 
@@ -121,6 +146,9 @@ navigator_get_property_appVersion(JSContext *ctx, unsigned int argc, JS::Value *
 static bool
 navigator_get_property_language(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 
 #ifdef CONFIG_NLS
@@ -137,6 +165,9 @@ navigator_get_property_language(JSContext *ctx, unsigned int argc, JS::Value *vp
 static bool
 navigator_get_property_platform(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setString(JS_NewStringCopyZ(ctx, system_name));
 
@@ -146,13 +177,16 @@ navigator_get_property_platform(JSContext *ctx, unsigned int argc, JS::Value *vp
 static bool
 navigator_get_property_userAgent(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
-	unsigned char *optstr;
+	char *optstr;
 
 	optstr = get_opt_str("protocol.http.user_agent", NULL);
 
 	if (*optstr && strcmp(optstr, " ")) {
-		unsigned char *ustr, ts[64] = "";
+		char *ustr, ts[64] = "";
 		static unsigned char custr[256];
 		/* TODO: Somehow get the terminal in which the
 		 * document is actually being displayed.  */

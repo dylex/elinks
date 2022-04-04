@@ -10,7 +10,7 @@
 #include "elinks.h"
 
 #include "cache/cache.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "network/connection.h"
 #include "network/state.h"
 #include "protocol/uri.h"
@@ -96,7 +96,7 @@ callback -- A callable object to be called after the document has\n\
 PyObject *
 python_load(PyObject *self, PyObject *args)
 {
-	unsigned char *uristring;
+	char *uristring;
 	PyObject *callback;
 	struct uri *uri;
 	struct download *download;

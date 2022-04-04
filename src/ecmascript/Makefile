@@ -4,7 +4,11 @@ INCLUDES += $(SPIDERMONKEY_CFLAGS)
 
 SUBDIRS-$(CONFIG_ECMASCRIPT_SMJS)	+= spidermonkey
 
-OBJS-$(CONFIG_ECMASCRIPT_SMJS)		+= ecmascript.o spidermonkey.o
+SUBDIRS-$(CONFIG_QUICKJS)	+= quickjs
+
+OBJS-$(CONFIG_ECMASCRIPT_SMJS)		+= css2xpath.o ecmascript.o localstorage-db.o spidermonkey.o
+
+OBJS-$(CONFIG_QUICKJS)		+= css2xpath.o ecmascript.o localstorage-db.o quickjs.o
 
 ifeq ($(CONFIG_ECMASCRIPT_SMJS), yes)
 CONFIG_ANY_SPIDERMONKEY = yes

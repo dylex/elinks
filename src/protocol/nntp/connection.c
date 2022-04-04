@@ -8,10 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h> /* OS/2 needs this after sys/types.h */
+#endif
+
 #include "elinks.h"
 
 #include "cache/cache.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/module.h"
 #include "network/connection.h"
 #include "network/socket.h"
@@ -35,7 +40,7 @@ static void nntp_send_command(struct connection *conn);
 
 /* Resolves the target by looking at the part of the URI _after_ last '/' */
 static enum nntp_target
-get_nntp_target(unsigned char *data, int datalen)
+get_nntp_target(char *data, int datalen)
 {
 	enum nntp_target target = NNTP_TARGET_ARTICLE_NUMBER;
 	int pos;
@@ -71,10 +76,10 @@ get_nntp_target(unsigned char *data, int datalen)
  * non empty and valid numbers and that the range is valid. */
 static int
 init_nntp_article_range(struct nntp_connection_info *nntp,
-			unsigned char *data, int datalen)
+			char *data, int datalen)
 {
 	long start_number, end_number;
-	unsigned char *end;
+	char *end;
 
 	errno = 0;
 	start_number = strtol(data, (char **) &end, 10);
@@ -99,8 +104,8 @@ init_nntp_connection_info(struct connection *conn)
 {
 	struct uri *uri = conn->uri;
 	struct nntp_connection_info *nntp;
-	unsigned char *groupend;
-	unsigned char *data;
+	char *groupend;
+	char *data;
 	int datalen;
 
 	assert(conn->info == NULL);
@@ -578,8 +583,8 @@ nntp_protocol_handler(struct connection *conn)
 void
 news_protocol_handler(struct connection *conn)
 {
-	unsigned char *protocol;
-	unsigned char *server = get_nntp_server();
+	char *protocol;
+	char *server = get_nntp_server();
 	struct string location;
 
 	if (!*server) server = getenv("NNTPSERVER");

@@ -20,7 +20,7 @@
 #include "dialogs/info.h"
 #include "document/renderer.h"
 #include "ecmascript/ecmascript.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/select.h"
 #include "main/timer.h"
 #include "main/version.h"
@@ -154,7 +154,7 @@ menu_copying(struct terminal *term, void *xxx, void *xxxx)
 }
 
 
-static unsigned char *
+static char *
 get_resource_info(struct terminal *term, void *data)
 {
 	struct string info;

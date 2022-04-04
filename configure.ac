@@ -16,7 +16,7 @@ AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR([config/m4])
 
 PACKAGE=elinks
-VERSION=0.14.1
+VERSION=0.15.0
 AC_SUBST(PACKAGE)
 AC_SUBST(VERSION)
 AC_DEFINE_UNQUOTED(PACKAGE, "$PACKAGE", [Package version])
@@ -61,6 +61,9 @@ echo "Feature summary:" > features.log
 
 AC_PROG_CC
 AC_PROG_CXX
+if test x"$CC" = x"$CXX"; then
+    AC_LANG(C++)
+fi
 AC_CHECK_TOOL([LD], [ld])
 AC_PROG_AWK
 AC_PATH_PROGS(AWK, "$AWK")
@@ -226,6 +229,7 @@ AC_CHECK_HEADERS(stdint.h inttypes.h)
 AC_CHECK_HEADERS(locale.h pwd.h)
 AC_CHECK_HEADERS(termios.h)
 AC_CHECK_HEADERS(poll.h)
+AC_CHECK_HEADERS(stdalign.h)
 
 AC_CHECK_HEADERS(sys/un.h,
 	[CONFIG_INTERLINK=yes
@@ -627,18 +631,68 @@ if test "$CONFIG_OS_WIN32" = yes; then
 fi
 
 # ===================================================================
+# Check for QuickJS
+# ===================================================================
+
+AC_ARG_WITH([quickjs],
+	[AS_HELP_STRING([--with-quickjs],
+		[enable Quickjs engine])])
+
+CONFIG_QUICKJS=
+
+case "$with_quickjs" in
+	"" | no)
+		# The user specified --without-quickjs.
+		AC_MSG_CHECKING([for QuickJS])
+		AC_MSG_RESULT([disabled])
+		CONFIG_QUICKJS="no"
+		;;
+	yes)
+		;;
+	*)
+		;;
+esac
+
+if test "x$CONFIG_QUICKJS" = x; then
+	AC_MSG_CHECKING([for QuickJS])
+	AC_LINK_IFELSE(
+		[AC_LANG_PROGRAM([[
+			#include <quickjs/quickjs.h>
+		]], [])],
+		[CONFIG_QUICKJS=yes
+		 AC_MSG_RESULT([yes])],
+		[AC_MSG_RESULT([not found])]
+	)
+
+	if test "x$CONFIG_QUICKJS" = xyes; then
+		DB_LOCALSTORAGE_LIBS="$($PKG_CONFIG $pkg_config_static --libs sqlite3)"
+		XMLPLUSPLUS_LIBS="$($PKG_CONFIG $pkg_config_static --libs libxml++-5.0)"
+		DB_LOCALSTORAGE_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags sqlite3)"
+		XMLPLUSPLUS_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags libxml++-5.0)"
+
+		CFLAGS="$CFLAGS $DB_LOCALSTORAGE_CFLAGS $XMLPLUSPLUS_CFLAGS"
+
+		LIBS="$LIBS $DB_LOCALSTORAGE_LIBS $XMLPLUSPLUS_LIBS /usr/lib/quickjs/libquickjs.a"
+	else
+		AC_MSG_RESULT([no])
+	fi
+fi
+
+
+# ===================================================================
 # Check for SpiderMonkey, optional even if installed.
 # ===================================================================
 
 # This option sets the $with_spidermonkey variable.
 AC_ARG_WITH([spidermonkey],
 	[AS_HELP_STRING([--with-spidermonkey],
-		[disable SpiderMonkey Mozilla JavaScript engine support])])
+		[enable SpiderMonkey Mozilla Javascript engine])])
 
 # CONFIG_SPIDERMONKEY is initially blank.  We change it to "yes" or "no"
 # when we know for sure whether we're going to use SpiderMonkey or not.
 # (features.conf is not supposed to define it.)
 CONFIG_SPIDERMONKEY=
+CONFIG_XML=
 EL_SAVE_FLAGS
 
 case "$with_spidermonkey" in
@@ -656,14 +710,19 @@ case "$with_spidermonkey" in
 		;;
 esac
 
-for package in mozjs-52; do
+for package in mozjs-78; do
 	if test -n "$CONFIG_SPIDERMONKEY"; then
 		break
 	else
-		AC_MSG_CHECKING([for SpiderMonkey (mozjs-52) in pkg-config $package])
+		AC_MSG_CHECKING([for SpiderMonkey (mozjs-78) in pkg-config $package])
 		if $PKG_CONFIG $pkg_config_static --cflags --libs $package > /dev/null 2>&AS_MESSAGE_LOG_FD; then
-			SPIDERMONKEY_LIBS="$($PKG_CONFIG $pkg_config_static --libs $package)"
-			SPIDERMONKEY_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags $package)"
+			DB_LOCALSTORAGE_LIBS="$($PKG_CONFIG $pkg_config_static --libs sqlite3)"
+			XMLPLUSPLUS_LIBS="$($PKG_CONFIG $pkg_config_static --libs libxml++-5.0)"
+			SPIDERMONKEY_LIBS="$($PKG_CONFIG $pkg_config_static --libs $package) $DB_LOCALSTORAGE_LIBS $XMLPLUSPLUS_LIBS"
+			DB_LOCALSTORAGE_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags sqlite3)"
+			XMLPLUSPLUS_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags libxml++-5.0)"
+			SPIDERMONKEY_CFLAGS="$($PKG_CONFIG $pkg_config_static --cflags $package) $DB_LOCALSTORAGE_CFLAGS $XMLPLUSPLUS_CFLAGS"
+
 			LIBS="$SPIDERMONKEY_LIBS $LIBS_X"
 			CFLAGS="$CFLAGS_X $SPIDERMONKEY_CFLAGS"
 			CPPFLAGS="$CPPFLAGS_X $SPIDERMONKEY_CFLAGS"
@@ -696,12 +755,13 @@ fi
 EL_RESTORE_FLAGS
 
 if test "x$CONFIG_SPIDERMONKEY" = xyes; then
+	CONFIG_XML=yes
 	EL_CONFIG(CONFIG_ECMASCRIPT_SMJS, [SpiderMonkey document scripting])
 else
 	CONFIG_ECMASCRIPT_SMJS=no
 fi
 
-EL_CONFIG_DEPENDS(CONFIG_ECMASCRIPT, [CONFIG_ECMASCRIPT_SMJS], [ECMAScript (JavaScript)])
+EL_CONFIG_DEPENDS(CONFIG_ECMASCRIPT, [CONFIG_ECMASCRIPT_SMJS CONFIG_QUICKJS], [ECMAScript (JavaScript)])
 AC_SUBST(CONFIG_ECMASCRIPT_SMJS)
 
 if test "x$CONFIG_ECMASCRIPT_SMJS" = xyes &&
@@ -719,7 +779,7 @@ AC_SUBST(CONFIG_ECMASCRIPT_SMJS_HEARTBEAT)
 # ===================================================================
 
 AC_ARG_ENABLE(sm-scripting,
-	      [  --disable-sm-scripting  ECMAScript browser scripting (requires Spidermonkey)],
+	      [  --disable-sm-scripting  disable ECMAScript browser scripting],
 	      [if test "$enableval" != no; then enableval="yes"; fi
 	       CONFIG_SCRIPTING_SPIDERMONKEY="$enableval";])
 
@@ -733,12 +793,21 @@ fi
 if test "x$CONFIG_ECMASCRIPT_SMJS" = xyes ||
    test "x$CONFIG_SCRIPTING_SPIDERMONKEY" = xyes; then
 	LIBS="$LIBS $SPIDERMONKEY_LIBS"
+	EL_CONFIG(CONFIG_XML, [libxml++5.0])
 	AC_SUBST(SPIDERMONKEY_LIBS)
 	AC_SUBST(SPIDERMONKEY_CFLAGS)
 	AC_SUBST(CONFIG_SPIDERMONKEY)
+	AC_SUBST(CONFIG_XML)
 	CFLAGS="$CFLAGS -fpermissive $SPIDERMONKEY_CFLAGS"
 fi
 
+if test "x$CONFIG_QUICKJS" = xyes; then
+	EL_CONFIG(CONFIG_XML, [libxml++5.0])
+	EL_CONFIG(CONFIG_QUICKJS, [quickjs])
+	AC_SUBST(CONFIG_QUICKJS)
+	AC_SUBST(CONFIG_XML)
+	CFLAGS="$CFLAGS -fpermissive"
+fi
 # ===================================================================
 # Check for Guile, optional even if installed.
 # ===================================================================
@@ -934,10 +1003,17 @@ if test -n "$luapkg" && $PKG_CONFIG $pkg_config_static "$luapkg"; then
 	LIBS="$LUA_LIBS $LIBS_X"
 
 	# Check that it is a compatible Lua version
-	AC_LINK_IFELSE([AC_LANG_PROGRAM([[	#include <lauxlib.h>]
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+#ifdef __cplusplus
+extern "C" {
+#endif
+		#include <lauxlib.h>
 		#include <lua.h>
 		#include <lualib.h>
-	], [[lua_State *L = luaL_newstate();
+#ifdef __cplusplus
+}
+#endif
+	]], [[lua_State *L = luaL_newstate();
 		luaL_openlibs(L);
 		lua_pushboolean(L, 1);
 		lua_close(L);]])],[cf_result=yes],[cf_result=no])
@@ -1368,6 +1444,8 @@ dnl AC_MSG_RESULT($cf_result)
 # ===================================================================
 # Compile-time features control
 # ===================================================================
+EL_ARG_ENABLE(CONFIG_GETTEXT, gettext, [System gettext],
+	      [  --enable-gettext        use System gettext for Native Language Support])
 
 EL_ARG_ENABLE(CONFIG_COOKIES, cookies, [Cookies],
 	      [  --disable-cookies       disable cookie support])
@@ -1436,6 +1514,9 @@ fi
 
 EL_ARG_ENABLE(CONFIG_FTP, ftp, [FTP protocol],
 	      [  --disable-ftp           disable ftp protocol support])
+
+EL_ARG_ENABLE(CONFIG_GEMINI, gemini, [Gemini protocol],
+	      [  --enable-gemini         enable gemini protocol support])
 
 EL_ARG_ENABLE(CONFIG_GOPHER, gopher, [Gopher protocol],
 	      [  --enable-gopher         enable gopher protocol support])
@@ -1633,38 +1714,6 @@ AC_SUBST(TRE_CFLAGS)
 AC_SUBST(TRE_LIBS)
 EL_LOG_CONFIG([CONFIG_TRE], [[Regexp searching]], [[$tre_log]])
 
-# ===================================================================
-# libdom
-# ===================================================================
-
-LIBDOM_CFLAGS=
-LIBDOM_LIBS=
-CONFIG_LIBDOM=no
-enable_libdom=no
-
-AC_ARG_WITH(libdom, [  --with-libdom           enable libdom],
-            [ if test "x$withval" != xno; then enable_libdom=yes; fi ])
-
-if test "$enable_libdom" = no; then
-	AC_MSG_CHECKING([[for libdom]])
-	AC_MSG_RESULT([[disabled]])
-else
-	AC_MSG_CHECKING([[for libdom in pkg-config]])
-	if $PKG_CONFIG $pkg_config_static libdom; then
-		LIBDOM_CFLAGS=`$PKG_CONFIG $pkg_config_static --cflags libdom`
-		LIBDOM_LIBS=`$PKG_CONFIG $pkg_config_static --libs libdom`
-		LIBS="$LIBDOM_LIBS $LIBS"
-		CONFIG_LIBDOM=yes
-		AC_DEFINE([CONFIG_LIBDOM], [1], [Define as 1 to use the libdom library.])
-		AC_MSG_RESULT([[yes]])
-	else
-		enable_libdom=no
-	fi
-fi
-AC_SUBST(LIBDOM_CFLAGS)
-AC_SUBST(LIBDOM_LIBS)
-EL_LOG_CONFIG([CONFIG_LIBDOM], [[libdom]], [[$enable_libdom]])
-
 
 # ===================================================================
 # Further LDFLAGS tweaks
@@ -1803,16 +1852,16 @@ if test "x$ac_cv_c_compiler_gnu" = "xyes"; then
       CFLAGS="$CFLAGS -fno-strict-aliasing"
       ;;
     4.5*)
-      CFLAGS="$CFLAGS -fno-strict-aliasing -Wno-pointer-sign -Wno-enum-compare"
+      CFLAGS="$CFLAGS -fno-strict-aliasing -Wno-enum-compare"
       ;;
     4.*|5.*|6.*|7.*|8|8.*|9|9.*)
       # Do not show warnings related to (char * | unsigned char *) type
       # difference.
-      CFLAGS="$CFLAGS -fno-strict-aliasing -Wno-pointer-sign"
+      CFLAGS="$CFLAGS -fno-strict-aliasing"
       ;;
-    10|10.*)
+    10|10.*|11|11.*)
       # gettext
-      CFLAGS="$CFLAGS -fno-strict-aliasing -Wno-pointer-sign -Wno-builtin-declaration-mismatch"
+      CFLAGS="$CFLAGS -fno-strict-aliasing -Wno-builtin-declaration-mismatch -Wno-array-bounds"
       ;;
     *)
       # These should be ok using -Werror

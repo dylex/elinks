@@ -25,7 +25,7 @@
 #include "ecmascript/ecmascript.h"
 #include "ecmascript/spidermonkey/unibar.h"
 #include "ecmascript/spidermonkey/window.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/select.h"
 #include "osdep/newwin.h"
 #include "osdep/sysname.h"
@@ -48,10 +48,26 @@
 static bool unibar_get_property_visible(JSContext *ctx, unsigned int argc, JS::Value *vp);
 static bool unibar_set_property_visible(JSContext *ctx, unsigned int argc, JS::Value *vp);
 
+static void
+menubar_finalize(JSFreeOp *op, JSObject *obj)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+}
+
 JSClassOps menubar_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	menubar_finalize,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	JS_GlobalObjectTraceHook
 };
 
 /* Each @menubar_class object must have a @window_class parent.  */
@@ -61,10 +77,26 @@ JSClass menubar_class = {
 	&menubar_ops
 };
 
+static void
+statusbar_finalize(JSFreeOp *op, JSObject *obj)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+}
+
 JSClassOps statusbar_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	statusbar_finalize,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	JS_GlobalObjectTraceHook
 };
 /* Each @statusbar_class object must have a @window_class parent.  */
 JSClass statusbar_class = {
@@ -90,30 +122,43 @@ JSPropertySpec unibar_props[] = {
 static bool
 unibar_get_property_visible(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
 	struct view_state *vs;
 	struct document_view *doc_view;
 	struct session_status *status;
-	unsigned char *bar;
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	char *bar;
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
 	/* This can be called if @obj if not itself an instance of either
 	 * appropriate class but has one in its prototype chain.  Fail
 	 * such calls.  */
 	if (!JS_InstanceOf(ctx, hobj, &menubar_class, NULL)
-	 && !JS_InstanceOf(ctx, hobj, &statusbar_class, NULL))
+	 && !JS_InstanceOf(ctx, hobj, &statusbar_class, NULL)) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
+	}
 
 	vs = interpreter->vs;
 	if (!vs) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 	doc_view = vs->doc_view;
@@ -143,30 +188,43 @@ unibar_get_property_visible(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 unibar_set_property_visible(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
 	struct view_state *vs;
 	struct document_view *doc_view;
 	struct session_status *status;
-	unsigned char *bar;
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	char *bar;
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
 	/* This can be called if @obj if not itself an instance of either
 	 * appropriate class but has one in its prototype chain.  Fail
 	 * such calls.  */
 	if (!JS_InstanceOf(ctx, hobj, &menubar_class, NULL)
-	 && !JS_InstanceOf(ctx, hobj, &statusbar_class, NULL))
+	 && !JS_InstanceOf(ctx, hobj, &statusbar_class, NULL)) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
+	}
 
 	vs = interpreter->vs;
 	if (!vs) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 	doc_view = vs->doc_view;

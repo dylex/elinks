@@ -8,7 +8,7 @@
 
 #include "config/kbdbind.h"
 #include "ecmascript/spidermonkey-shared.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "scripting/smjs/core.h"
 #include "scripting/smjs/elinks_object.h"
 #include "session/session.h"
@@ -27,8 +27,8 @@ static void smjs_action_fn_finalize(JSFreeOp *op, JSObject *obj);
 static bool smjs_action_fn_callback(JSContext *ctx, unsigned int argc, JS::Value *rval);
 
 static JSClassOps action_fn_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
+	nullptr, nullptr,
+	nullptr, nullptr,
 	nullptr, nullptr, nullptr,
 	smjs_action_fn_finalize,
 	NULL,
@@ -127,9 +127,9 @@ smjs_action_fn_callback(JSContext *ctx, unsigned int argc, JS::Value *rval)
 
 
 static JSObject *
-smjs_get_action_fn_object(unsigned char *action_str)
+smjs_get_action_fn_object(char *action_str)
 {
-	unsigned char *c;
+	char *c;
 	struct smjs_action_fn_callback_hop *hop;
 	JSObject *obj;
 
@@ -171,12 +171,12 @@ action_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 	JS::Value val;
 	JS::RootedValue rval(ctx, val);
 	JSObject *action_fn;
-	unsigned char *action_str;
+	char *action_str;
 
 	hvp.setNull();
 
 	JS_IdToValue(ctx, id, &rval);
-	action_str = JS_EncodeString(ctx, rval.toString());
+	action_str = jsval_to_string(ctx, rval);
 	if (!action_str) return true;
 
 	action_fn = smjs_get_action_fn_object(action_str);
@@ -188,9 +188,17 @@ action_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 }
 
 static JSClassOps action_ops = {
-	JS_PropertyStub, nullptr,
-	action_get_property, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr,
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass action_class = {

@@ -36,7 +36,7 @@ struct plain_renderer {
 	struct document *document;
 
 	/* The data and data length of the defragmented cache entry */
-	unsigned char *source;
+	char *source;
 	int length;
 
 	/* The convert table that should be used for converting line strings to
@@ -77,7 +77,7 @@ realloc_line(struct document *document, int x, int y)
 }
 
 static inline struct link *
-add_document_link(struct document *document, unsigned char *uri, int length,
+add_document_link(struct document *document, char *uri, int length,
 		  int x, int y)
 {
 	struct link *link;
@@ -110,12 +110,12 @@ add_document_link(struct document *document, unsigned char *uri, int length,
 
 /* Searches a word to find an email adress or an URI to add as a link. */
 static inline struct link *
-check_link_word(struct document *document, unsigned char *uri, int length,
+check_link_word(struct document *document, char *uri, int length,
 		int x, int y)
 {
 	struct uri test;
-	unsigned char *where = NULL;
-	unsigned char *mailto = memchr(uri, '@', length);
+	char *where = NULL;
+	char *mailto = memchr(uri, '@', length);
 	int keep = uri[length];
 	struct link *new_link;
 
@@ -125,7 +125,7 @@ check_link_word(struct document *document, unsigned char *uri, int length,
 	uri[length] = 0;
 
 	if (mailto && mailto > uri && mailto - uri < length - 1) {
-		where = straconcat("mailto:", uri, (unsigned char *) NULL);
+		where = straconcat("mailto:", uri, (char *) NULL);
 
 	} else if (parse_uri(&test, uri) == URI_ERRNO_OK
 		   && test.protocol != PROTOCOL_UNKNOWN
@@ -157,7 +157,7 @@ check_link_word(struct document *document, unsigned char *uri, int length,
 		&& !isquote(c))
 
 static inline int
-get_uri_length(unsigned char *line, int length)
+get_uri_length(char *line, int length)
 {
 	int uri_end = 0;
 
@@ -176,16 +176,16 @@ get_uri_length(unsigned char *line, int length)
 
 static int
 print_document_link(struct plain_renderer *renderer, int lineno,
-		    unsigned char *line, int line_pos, int width,
+		    char *line, int line_pos, int width,
 		    int expanded, struct screen_char *pos, int cells)
 {
 	struct document *document = renderer->document;
-	unsigned char *start = &line[line_pos];
+	char *start = &line[line_pos];
 	int len = get_uri_length(start, width - line_pos);
 	int screen_column = cells + expanded;
 	struct link *new_link;
 	int link_end = line_pos + len;
-	unsigned char saved_char;
+	char saved_char;
 	struct document_options *doc_opts = &document->options;
 	struct screen_char template_ = renderer->template_;
 	int i;
@@ -228,8 +228,16 @@ print_document_link(struct plain_renderer *renderer, int lineno,
 	return len;
 }
 
+#define RED_COLOR_MASK          0x00FF0000
+#define GREEN_COLOR_MASK        0x0000FF00
+#define BLUE_COLOR_MASK         0x000000FF
+
+#define RED_COLOR(color)        (((color) & RED_COLOR_MASK)   >> 16)
+#define GREEN_COLOR(color)      (((color) & GREEN_COLOR_MASK) >>  8)
+#define BLUE_COLOR(color)       (((color) & BLUE_COLOR_MASK)  >>  0)
+
 static void
-decode_esc_color(unsigned char *text, int *line_pos, int width,
+decode_esc_color(char *text, int *line_pos, int width,
 		 struct screen_char *template_, enum color_mode mode,
 		 int *was_reversed)
 {
@@ -238,6 +246,19 @@ decode_esc_color(unsigned char *text, int *line_pos, int width,
 	char *buf, *tail, *begin, *end;
 	int k, foreground, background, f1, b1; /* , intensity; */
 
+#ifdef CONFIG_256_COLORS
+	int foreground256, background256;
+	int was_256 = 0;
+#endif
+
+	int was_background = 0;
+	int was_foreground = 0;
+
+	int was_24 = 0;
+
+	unsigned char back_red = 0, back_green = 0, back_blue = 0;
+	unsigned char fore_red = 0, fore_green = 0, fore_blue = 0;
+
 	++(*line_pos);
 	buf = (char *)&text[*line_pos];
 
@@ -245,26 +266,126 @@ decode_esc_color(unsigned char *text, int *line_pos, int width,
 	++buf;
 	++(*line_pos);
 	
-	k = strspn(buf, "0123456789;");
+	k = strspn(buf, "0123456789;?");
 	*line_pos += k;
-	if (!k || buf[k] != 'm')  return;
+	if (!k || (buf[k] != 'm' && buf[k] != 'l' && buf[k] != 'h'))  return;
 	
 	end = buf + k;
 	begin = tail = buf;
 
 	get_screen_char_color(template_, &color, 0, mode);
+
+	back_red = RED_COLOR(color.background);
+	back_green = GREEN_COLOR(color.background);
+	back_blue = BLUE_COLOR(color.background);
+
+	fore_red = RED_COLOR(color.foreground);
+	fore_green = GREEN_COLOR(color.foreground);
+	fore_blue = BLUE_COLOR(color.foreground);
+
 	set_term_color(&ch, &color, 0, COLOR_MODE_16);
 	b1 = background = (ch.c.color[0] >> 4) & 7;
 	f1 = foreground = ch.c.color[0] & 15;
-	
+
+#ifdef CONFIG_256_COLORS
+	set_term_color(&ch, &color, 0, COLOR_MODE_256);
+	foreground256 = ch.c.color[0];
+	background256 = ch.c.color[1];
+#endif
+
 	while (tail < end) {
 		unsigned char kod = (unsigned char)strtol(begin, &tail, 10);
 
 		begin = tail + 1;
+
+		if (was_background) {
+			switch (was_background) {
+			case 1:
+				if (kod == 2) {
+					was_background = 2;
+					continue;
+				}
+#ifdef CONFIG_256_COLORS
+				if (kod == 5) {
+					was_background = 5;
+					continue;
+				}
+#endif
+				was_background = 0;
+				continue;
+			case 2:
+				back_red = kod;
+				was_background = 3;
+				continue;
+			case 3:
+				back_green = kod;
+				was_background = 4;
+				continue;
+			case 4:
+				back_blue = kod;
+				was_background = 0;
+				was_24 = 1;
+				continue;
+#ifdef CONFIG_256_COLORS
+			case 5:
+				background256 = kod;
+				was_background = 0;
+				was_256 = 1;
+				continue;
+#endif
+			default:
+				was_background = 0;
+				continue;
+			}
+		}
+
+		if (was_foreground) {
+			switch (was_foreground) {
+			case 1:
+				if (kod == 2) {
+					was_foreground = 2;
+					continue;
+				}
+#ifdef CONFIG_256_COLORS
+				if (kod == 5) {
+					was_foreground = 5;
+					continue;
+				}
+#endif
+				was_foreground = 0;
+				continue;
+			case 2:
+				fore_red = kod;
+				was_foreground = 3;
+				continue;
+			case 3:
+				fore_green = kod;
+				was_foreground = 4;
+				continue;
+			case 4:
+				fore_blue = kod;
+				was_foreground = 0;
+				was_24 = 1;
+				continue;
+#ifdef CONFIG_256_COLORS
+			case 5:
+				foreground256 = kod;
+				was_foreground = 0;
+				was_256 = 1;
+				continue;
+#endif
+			default:
+				was_foreground = 0;
+				continue;
+			}
+		}
+
 		switch (kod) {
 		case 0:
 			background = 0;
 			foreground = 7;
+			back_red = back_green = back_blue = 0;
+			fore_red = fore_green = fore_blue = 255;
 			break;
 		case 7:
 			if (*was_reversed == 0) {
@@ -290,6 +411,11 @@ decode_esc_color(unsigned char *text, int *line_pos, int width,
 		case 37:
 			foreground = kod - 30;
 			break;
+
+		case 38:
+			was_foreground = 1;
+			break;
+
 		case 40:
 		case 41:
 		case 42:
@@ -297,21 +423,37 @@ decode_esc_color(unsigned char *text, int *line_pos, int width,
 		case 44:
 		case 45:
 		case 46:
-		case 47:	
+		case 47:
 			background = kod - 40;
 			break;
+		case 48:
+			was_background = 1;
+			break;
+
 		default:
 			break;
 		}
 	}
-	color.background = get_term_color16(background);
-	color.foreground = get_term_color16(foreground);
+#ifdef CONFIG_256_COLORS
+	if (was_256) {
+		color.background = get_term_color256(background256);
+		color.foreground = get_term_color256(foreground256);
+	} else
+#endif
+	{
+		color.background = get_term_color16(background);
+		color.foreground = get_term_color16(foreground);
+	}
+	if (was_24) {
+		color.background = (back_red << 16) | (back_green << 8) | back_blue;
+		color.foreground = (fore_red << 16) | (fore_green << 8) | fore_blue;
+	}
 	set_term_color(template_, &color, 0, mode);
 }
 
 static inline int
 add_document_line(struct plain_renderer *renderer,
-		  unsigned char *line, int line_width)
+		  char *line, int line_width)
 {
 	struct document *document = renderer->document;
 	struct screen_char *template_ = &renderer->template_;
@@ -336,14 +478,14 @@ add_document_line(struct plain_renderer *renderer,
 
 	/* Now expand tabs */
 	for (line_pos = 0; line_pos < width;) {
-		unsigned char line_char = line[line_pos];
+		char line_char = line[line_pos];
 		int charlen = 1;
 		int cell = 1;
 #ifdef CONFIG_UTF8
 		unicode_val_T data;
 
 		if (utf8) {
-			unsigned char *line_char2 = &line[line_pos];
+			char *line_char2 = &line[line_pos];
 			charlen = utf8charlen(&line_char);
 			data = utf8_to_unicode(&line_char2, &line[width]);
 
@@ -395,15 +537,15 @@ add_document_line(struct plain_renderer *renderer,
 	cells = 0;
 	expanded = 0;
 	for (line_pos = 0; line_pos < width;) {
-		unsigned char line_char = line[line_pos];
-		unsigned char next_char, prev_char;
+		char line_char = line[line_pos];
+		char next_char, prev_char;
 		int charlen = 1;
 		int cell = 1;
 #ifdef CONFIG_UTF8
 		unicode_val_T data = UCS_NO_CHAR;
 
 		if (utf8) {
-			unsigned char *line_char2 = &line[line_pos];
+			char *line_char2 = &line[line_pos];
 			charlen = utf8charlen(&line_char);
 			data = utf8_to_unicode(&line_char2, &line[width]);
 
@@ -594,7 +736,7 @@ add_node(struct plain_renderer *renderer, int x, int width, int height)
 static void
 add_document_lines(struct plain_renderer *renderer)
 {
-	unsigned char *source = renderer->source;
+	char *source = renderer->source;
 	int length = renderer->length;
 	int was_empty_line = 0;
 	int was_wrapped = 0;
@@ -602,7 +744,7 @@ add_document_lines(struct plain_renderer *renderer)
 	int utf8 = is_cp_utf8(renderer->document->cp);
 #endif
 	for (; length > 0; renderer->lineno++) {
-		unsigned char *xsource;
+		char *xsource;
 		int width, added, only_spaces = 1, spaces = 0, was_spaces = 0;
 		int last_space = 0;
 		int tab_spaces = 0;
@@ -632,7 +774,7 @@ add_document_lines(struct plain_renderer *renderer)
 			}
 #ifdef CONFIG_UTF8
 			if (utf8) {
-				unsigned char *text = &source[width];
+				char *text = &source[width];
 				unicode_val_T data = utf8_to_unicode(&text,
 							&source[length]);
 
@@ -703,12 +845,119 @@ add_document_lines(struct plain_renderer *renderer)
 	assert(!length);
 }
 
+static void
+fixup_tables(struct plain_renderer *renderer)
+{
+	int y;
+
+	for (y = 0; y < renderer->lineno; y++) {
+		int x;
+		struct line *prev_line = y > 0 ? &renderer->document->data[y - 1] : NULL;
+		struct line *line = &renderer->document->data[y];
+		struct line *next_line = y < renderer->lineno - 1 ? &renderer->document->data[y + 1] : NULL;
+
+		for (x = 0; x < line->length; x++) {
+			int dir;
+#ifdef CONFIG_UTF8
+			unicode_val_T ch = line->chars[x].data;
+			unicode_val_T prev_char, next_char, up_char, down_char;
+#else
+			unsigned char ch = line->chars[x].data;
+			unsigned char prev_char, next_char, up_char, down_char;
+#endif
+			if (ch != '+' && ch != '-' && ch != '|') {
+				continue;
+			}
+
+			prev_char = x > 0 ? line->chars[x - 1].data : ' ';
+			next_char = x < line->length - 1 ? line->chars[x + 1].data : ' ';
+			up_char = (prev_line && x < prev_line->length) ? prev_line->chars[x].data : ' ';
+			down_char = (next_line && x < next_line->length) ? next_line->chars[x].data : ' ';
+
+			switch (ch) {
+			case '+':
+				dir = 0;
+				if (up_char == '|' || up_char == BORDER_SVLINE) dir |= 1;
+				if (next_char == '-' || next_char == BORDER_SHLINE) dir |= 2;
+				if (down_char == '|' || down_char == BORDER_SVLINE) dir |= 4;
+				if (prev_char == '-' || prev_char == BORDER_SHLINE) dir |= 8;
+
+				switch (dir) {
+				case 15:
+					line->chars[x].data = BORDER_SCROSS;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 13:
+					line->chars[x].data = BORDER_SLTEE;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 7:
+					line->chars[x].data = BORDER_SRTEE;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 6:
+					line->chars[x].data = BORDER_SULCORNER;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 12:
+					line->chars[x].data = BORDER_SURCORNER;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 3:
+					line->chars[x].data = BORDER_SDLCORNER;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 9:
+					line->chars[x].data = BORDER_SDRCORNER;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 11:
+					line->chars[x].data = BORDER_SUTEE;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				case 14:
+					line->chars[x].data = BORDER_SDTEE;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+					break;
+				default:
+					break;
+				}
+				break;
+			case '-':
+				if (prev_char == BORDER_SHLINE || prev_char == BORDER_SCROSS || prev_char == '+' || prev_char == '|'
+				|| prev_char == BORDER_SULCORNER || prev_char == BORDER_SDLCORNER || prev_char == BORDER_SRTEE
+				|| prev_char == BORDER_SUTEE || prev_char == BORDER_SDTEE) {
+					line->chars[x].data = BORDER_SHLINE;
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+				}
+				break;
+			case '|':
+				if (up_char == BORDER_SVLINE || up_char == '+' || up_char == '|' || up_char == BORDER_SULCORNER
+				|| up_char == BORDER_SURCORNER || up_char == BORDER_SCROSS || up_char == BORDER_SRTEE || up_char == BORDER_SLTEE
+				|| up_char == BORDER_SDTEE) {
+					if (next_char == '-') {
+						line->chars[x].data = BORDER_SRTEE;
+					} else if (prev_char == BORDER_SHLINE || prev_char == '-') {
+						line->chars[x].data = BORDER_SLTEE;
+					} else {
+						line->chars[x].data = BORDER_SVLINE;
+					}
+					line->chars[x].attr = SCREEN_ATTR_FRAME;
+				}
+				break;
+			default:
+				continue;
+			}
+		}
+	}
+}
+
 void
 render_plain_document(struct cache_entry *cached, struct document *document,
 		      struct string *buffer)
 {
 	struct conv_table *convert_table;
-	unsigned char *head = empty_string_or_(cached->head);
+	char *head = empty_string_or_(cached->head);
 	struct plain_renderer renderer;
 
 	convert_table = get_convert_table(head, document->options.cp,
@@ -737,4 +986,8 @@ render_plain_document(struct cache_entry *cached, struct document *document,
 	init_template(&renderer.template_, &document->options);
 
 	add_document_lines(&renderer);
+
+	if (document->options.plain_fixup_tables) {
+		fixup_tables(&renderer);
+	}
 }

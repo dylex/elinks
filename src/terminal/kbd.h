@@ -7,6 +7,11 @@
 extern "C" {
 #endif
 
+/* Some constants for the strings inside of {struct terminal}. */
+
+#define MAX_TERM_LEN	32	/* this must be multiple of 8! (alignment problems) */
+#define MAX_CWD_LEN	256	/* this must be multiple of 8! (alignment problems) */
+
 struct itrm;
 
 /** A character received from a terminal.  */
@@ -127,15 +132,15 @@ void
 handle_trm(int std_in, int std_out, int sock_in, int sock_out, int ctl_in,
 	   void *init_string, int init_len, int remote);
 
-void itrm_queue_event(struct itrm *itrm, unsigned char *data, int len);
+void itrm_queue_event(struct itrm *itrm, char *data, int len);
 void block_itrm(void);
 int unblock_itrm(void);
 void free_all_itrms(void);
 void resize_terminal(void);
-void dispatch_special(unsigned char *);
+void dispatch_special(char *);
 void kbd_ctrl_c(void);
 int is_blocked(void);
-void get_terminal_name(unsigned char *);
+void get_terminal_name(char[MAX_TERM_LEN]);
 
 #define kbd_get_key(kbd_)	((kbd_)->key)
 #define kbd_key_is(kbd_, key)	(kbd_get_key(kbd_) == (key))

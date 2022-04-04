@@ -11,6 +11,7 @@ extern "C" {
 element_handler_T html_address;
 element_handler_T html_base;
 element_handler_T html_blockquote;
+element_handler_T html_blockquote_close;
 element_handler_T html_body;
 element_handler_T html_bold;
 element_handler_T html_br;
@@ -63,7 +64,7 @@ element_handler_T html_xmp;
 element_handler_T html_xmp_close;
 
 void html_apply_canvas_bgcolor(struct html_context *);
-void html_handle_body_meta(struct html_context *, unsigned char *, unsigned char *);
+void html_handle_body_meta(struct html_context *, char *, char *);
 
 #ifdef __cplusplus
 }

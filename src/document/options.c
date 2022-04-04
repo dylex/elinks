@@ -82,10 +82,12 @@ init_document_options(struct session *ses, struct document_options *doo)
 
 	doo->plain_display_links = get_opt_bool("document.plain.display_links", ses);
 	doo->plain_compress_empty_lines = get_opt_bool("document.plain.compress_empty_lines", ses);
+	doo->plain_fixup_tables = get_opt_bool("document.plain.fixup_tables", ses);
 	doo->underline_links = get_opt_bool("document.html.underline_links", ses);
 	doo->wrap_nbsp = get_opt_bool("document.html.wrap_nbsp", ses);
 	doo->use_tabindex = get_opt_bool("document.browse.links.use_tabindex", ses);
 	doo->links_numbering = get_opt_bool("document.browse.links.numbering", ses);
+	doo->links_show_goto = get_opt_bool("document.browse.links.show_goto", ses);
 
 	doo->active_link.enable_color = get_opt_bool("document.browse.links.active_link.enable_color", ses);
 	doo->active_link.invert = get_opt_bool("document.browse.links.active_link.invert", ses);
@@ -95,6 +97,7 @@ init_document_options(struct session *ses, struct document_options *doo)
 	doo->table_order = get_opt_bool("document.browse.table_move_order", ses);
 	doo->tables = get_opt_bool("document.html.display_tables", ses);
 	doo->frames = get_opt_bool("document.html.display_frames", ses);
+	doo->iframes = get_opt_bool("document.html.display_iframes", ses);
 	doo->images = get_opt_bool("document.browse.images.show_as_links", ses);
 	doo->display_subs = get_opt_bool("document.html.display_subs", ses);
 	doo->display_sups = get_opt_bool("document.html.display_sups", ses);
@@ -141,7 +144,7 @@ done_document_options(struct document_options *options)
 }
 
 void
-toggle_document_option(struct session *ses, unsigned char *option_name)
+toggle_document_option(struct session *ses, char *option_name)
 {
 	struct option *option;
 

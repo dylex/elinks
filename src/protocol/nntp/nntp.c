@@ -8,7 +8,7 @@
 #include "elinks.h"
 
 #include "config/options.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/module.h"
 #include "protocol/nntp/nntp.h"
 
@@ -50,13 +50,13 @@ static union option_info nntp_protocol_options[] = {
 
 #define get_opt_nntp(which)	nntp_protocol_options[(which)].option
 
-unsigned char *
+char *
 get_nntp_server(void)
 {
 	return get_opt_nntp(NNTP_PROTOCOL_SERVER).value.string;
 }
 
-unsigned char *
+char *
 get_nntp_header_entries(void)
 {
 	return get_opt_nntp(NNTP_PROTOCOL_HEADER_ENTRIES).value.string;

@@ -25,6 +25,9 @@
 #include "dialogs/status.h"
 #include "document/document.h"
 #include "document/view.h"
+#ifdef CONFIG_ECMASCRIPT
+#include "ecmascript/ecmascript.h"
+#endif
 #include "formhist/dialogs.h"
 #include "globhist/dialogs.h"
 #include "main/main.h"
@@ -46,9 +49,9 @@
 
 static void
 goto_url_action(struct session *ses,
-		unsigned char *(*get_url)(struct session *, unsigned char *, size_t))
+		char *(*get_url)(struct session *, char *, size_t))
 {
-	unsigned char url[MAX_STR_LEN];
+	char url[MAX_STR_LEN];
 
 	if (!get_url || !get_url(ses, url, sizeof(url)))
 		url[0] = 0;
@@ -255,7 +258,9 @@ do_action(struct session *ses, enum main_action action_id, int verbose)
 		{
 			int count = int_max(1, eat_kbd_repeat_count(ses));
 
-			go_history_by_n(ses, -count);
+			if (go_history_by_n(ses, -count) &&
+			    get_opt_bool("ui.back_to_exit", NULL))
+				close_tab(term, ses);
 			break;
 		}
 		case ACT_MAIN_HISTORY_MOVE_FORWARD:
@@ -368,18 +373,35 @@ do_action(struct session *ses, enum main_action action_id, int verbose)
 
 		case ACT_MAIN_MOVE_HALF_PAGE_DOWN:
 			status = move_half_page_down(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_HALF_PAGE_UP:
 			status = move_half_page_up(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, -1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_LINK_DOWN:
 			status = move_link_down(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_LINK_DOWN_LINE:
 			status = move_link_down_line(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
+
 			break;
 
 		case ACT_MAIN_MOVE_LINK_LEFT:
@@ -392,10 +414,19 @@ do_action(struct session *ses, enum main_action action_id, int verbose)
 
 		case ACT_MAIN_MOVE_LINK_NEXT:
 			status = move_link_next(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
+
 			break;
 
 		case ACT_MAIN_MOVE_LINK_PREV:
 			status = move_link_prev(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, -1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_LINK_RIGHT:
@@ -404,22 +435,43 @@ do_action(struct session *ses, enum main_action action_id, int verbose)
 
 		case ACT_MAIN_MOVE_LINK_RIGHT_LINE:
 			status = move_link_next_line(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_LINK_UP:
 			status = move_link_up(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, -1);
+				draw_formatted(ses, 0);
+			}
+
 			break;
 
 		case ACT_MAIN_MOVE_LINK_UP_LINE:
 			status = move_link_up_line(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, -1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_PAGE_DOWN:
 			status = move_page_down(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, 1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_PAGE_UP:
 			status = move_page_up(ses, doc_view);
+			if (status != FRAME_EVENT_REFRESH) {
+				next_frame(ses, -1);
+				draw_formatted(ses, 0);
+			}
 			break;
 
 		case ACT_MAIN_MOVE_DOCUMENT_START:
@@ -619,13 +671,19 @@ do_action(struct session *ses, enum main_action action_id, int verbose)
 			redraw_terminal_cls(term);
 			break;
 
+		case ACT_MAIN_TOGGLE_ECMASCRIPT:
+#ifdef CONFIG_ECMASCRIPT
+			toggle_ecmascript(ses);
+#endif
+			break;
+
 		case ACT_MAIN_TOGGLE_HTML_PLAIN:
 			toggle_plain_html(ses, ses->doc_view, 0);
 			break;
 
 		case ACT_MAIN_TOGGLE_MOUSE:
 #ifdef CONFIG_MOUSE
-			toggle_mouse();
+			toggle_mouse(ses);
 #endif
 			break;
 

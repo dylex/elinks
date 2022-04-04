@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h> /* OS/2 needs this after sys/types.h */
+#endif
 #include <sys/stat.h> /* OS/2 needs this after sys/types.h */
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h> /* OS/2 needs this after sys/types.h */
@@ -20,7 +23,7 @@
 
 #include "config/options.h"
 #include "cookies/cookies.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "mime/backend/common.h"
 #include "network/connection.h"
 #include "network/progress.h"
@@ -70,7 +73,7 @@ void
 mailcap_protocol_handler(struct connection *conn)
 {
 #ifdef HAVE_FORK
-	unsigned char *script, *ref;
+	char *script, *ref;
 	pid_t pid;
 	struct connection_state state = connection_state(S_OK);
 	int pipe_read[2], check;
@@ -107,8 +110,8 @@ mailcap_protocol_handler(struct connection *conn)
 		if (dup2(pipe_read[1], STDOUT_FILENO) < 0) {
 			_exit(2);
 		}
-		/* We implicitly chain stderr to ELinks' stderr. */
 		close_all_non_term_fd();
+		close(STDERR_FILENO);
 
 		if (execl("/bin/sh", "/bin/sh", "-c", script, (char *) NULL)) {
 			_exit(3);

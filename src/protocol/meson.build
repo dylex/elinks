@@ -10,6 +10,9 @@ endif
 if conf_data.get('CONFIG_FTP')
 	subdir('ftp')
 endif
+if conf_data.get('CONFIG_GEMINI')
+	subdir('gemini')
+endif
 if conf_data.get('CONFIG_GOPHER')
 	subdir('gopher')
 endif

@@ -16,8 +16,8 @@ using namespace JS;
 JSObject *smjs_global_object;
 
 static const JSClassOps global_ops = {
-	JS_PropertyStub, nullptr,
-	JS_PropertyStub, JS_StrictPropertyStub,
+	nullptr, nullptr,
+	nullptr, nullptr,
 	nullptr, nullptr, nullptr, nullptr
 };
 
@@ -30,8 +30,7 @@ static JSObject *
 smjs_get_global_object(void)
 {
 	assert(smjs_ctx);
-	JSAutoRequest ar(smjs_ctx);
-	JS::CompartmentOptions opts;
+	JS::RealmOptions opts;
 
 //	if (!JS::InitSelfHostedCode(smjs_ctx)) {
 //		return NULL;
@@ -41,9 +40,9 @@ smjs_get_global_object(void)
 
 	if (!jsobj) return NULL;
 
-	new JSAutoCompartment(smjs_ctx, jsobj);
+	new JSAutoRealm(smjs_ctx, jsobj);
 
-	JS_InitStandardClasses(smjs_ctx, jsobj);
+	JS::InitRealmStandardClasses(smjs_ctx);
 
 	return jsobj;
 }

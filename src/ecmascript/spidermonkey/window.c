@@ -11,6 +11,7 @@
 #include "elinks.h"
 
 #include "ecmascript/spidermonkey/util.h"
+#include <js/BigInt.h>
 #include <js/Conversions.h>
 
 #include "bfu/dialog.h"
@@ -24,7 +25,8 @@
 #include "document/view.h"
 #include "ecmascript/ecmascript.h"
 #include "ecmascript/spidermonkey/window.h"
-#include "intl/gettext/libintl.h"
+#include "ecmascript/timer.h"
+#include "intl/libintl.h"
 #include "main/select.h"
 #include "osdep/newwin.h"
 #include "osdep/sysname.h"
@@ -53,10 +55,27 @@ static bool window_get_property_status(JSContext *ctx, unsigned int argc, JS::Va
 static bool window_set_property_status(JSContext *ctx, unsigned int argc, JS::Value *vp);
 static bool window_get_property_top(JSContext *ctx, unsigned int argc, JS::Value *vp);
 
+static void
+window_finalize(JSFreeOp *op, JSObject *obj)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+}
+
+
 JSClassOps window_ops = {
-	JS_PropertyStub, nullptr,
-	window_get_property, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	window_finalize,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	JS_GlobalObjectTraceHook
 };
 
 JSClass window_class = {
@@ -95,8 +114,11 @@ JSPropertySpec window_props[] = {
 
 
 static JSObject *
-try_resolve_frame(struct document_view *doc_view, unsigned char *id)
+try_resolve_frame(struct document_view *doc_view, char *id)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	struct session *ses = doc_view->session;
 	struct frame *target;
 
@@ -113,6 +135,9 @@ try_resolve_frame(struct document_view *doc_view, unsigned char *id)
 static struct frame_desc *
 find_child_frame(struct document_view *doc_view, struct frame_desc *tframe)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	struct frameset_desc *frameset = doc_view->document->frame_desc;
 	int i;
 
@@ -134,19 +159,29 @@ find_child_frame(struct document_view *doc_view, struct frame_desc *tframe)
 static bool
 window_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS::MutableHandleValue hvp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	struct view_state *vs;
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
 	 * such calls.  */
-	if (!JS_InstanceOf(ctx, hobj, &window_class, NULL))
+	if (!JS_InstanceOf(ctx, hobj, &window_class, NULL)) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
+	}
 
 	vs = interpreter->vs;
 
@@ -156,13 +191,20 @@ window_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 	 * everything's fine. */
 	if (JSID_IS_STRING(hid)) {
 		struct document_view *doc_view = vs->doc_view;
-		JSObject *obj = try_resolve_frame(doc_view, jsid_to_string(ctx, hid));
-		/* TODO: Try other lookups (mainly element lookup) until
-		 * something yields data. */
-		if (obj) {
-			hvp.setObject(*obj);
+
+		const char *str = jsid_to_string(ctx, hid);
+
+		if (str) {
+			JSObject *obj = try_resolve_frame(doc_view, str);
+			/* TODO: Try other lookups (mainly element lookup) until
+		 	* something yields data. */
+			if (obj) {
+				hvp.setObject(*obj);
+			} else {
+				hvp.setNull();
+			}
+			return true;
 		}
-		return true;
 	}
 
 	if (!JSID_IS_INT(hid))
@@ -173,14 +215,16 @@ window_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 	return true;
 }
 
-void location_goto(struct document_view *doc_view, unsigned char *url);
+void location_goto(struct document_view *doc_view, char *url);
 
 static bool window_alert(JSContext *ctx, unsigned int argc, JS::Value *rval);
+static bool window_clearTimeout(JSContext *ctx, unsigned int argc, JS::Value *rval);
 static bool window_open(JSContext *ctx, unsigned int argc, JS::Value *rval);
 static bool window_setTimeout(JSContext *ctx, unsigned int argc, JS::Value *rval);
 
 const spidermonkeyFunctionSpec window_funcs[] = {
 	{ "alert",	window_alert,		1 },
+	{ "clearTimeout",	window_clearTimeout,	1 },
 	{ "open",	window_open,		3 },
 	{ "setTimeout",	window_setTimeout,	2 },
 	{ NULL }
@@ -190,40 +234,44 @@ const spidermonkeyFunctionSpec window_funcs[] = {
 static bool
 window_alert(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::Value val;
-	JSObject *obj = JS_THIS_OBJECT(ctx, rval);
-	JS::RootedObject hobj(ctx, obj);
 	JS::CallArgs args = JS::CallArgsFromVp(argc, rval);
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+//	JS::RootedObject hobj(ctx, &args.thisv().toObject());
+
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
 //	JS::Value *argv = JS_ARGV(ctx, rval);
 	struct view_state *vs;
-	unsigned char *string;
+	char *string;
 
-	if (!JS_InstanceOf(ctx, hobj, &window_class, nullptr)) {
-		return false;
-	}
+//	if (!JS_InstanceOf(ctx, hobj, &window_class, &args)) {
+//		return false;
+//	}
 
 	vs = interpreter->vs;
 
 	if (argc != 1)
 		return true;
 
-	JSString *str = JS::ToString(ctx, args[0]);
+	string = jsval_to_string(ctx, args[0]);
 
-	string = JS_EncodeString(ctx, str);
-
-	if (!*string)
+	if (!string)
 		return true;
 
 	info_box(vs->doc_view->session->tab->term, MSGBOX_FREE_TEXT,
-		N_("JavaScript Alert"), ALIGN_CENTER, stracpy(string));
+		N_("JavaScript Alert"), ALIGN_CENTER, string);
 
 	args.rval().setUndefined();
 	return true;
@@ -233,27 +281,37 @@ window_alert(JSContext *ctx, unsigned int argc, JS::Value *rval)
 static bool
 window_open(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
-	JSObject *obj = JS_THIS_OBJECT(ctx, rval);
-	JS::RootedObject hobj(ctx, obj);
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = JS::CallArgsFromVp(argc, rval);
+	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 //	JS::Value *argv = JS_ARGV(ctx, rval);
 	struct view_state *vs;
 	struct document_view *doc_view;
 	struct session *ses;
-	unsigned char *frame = NULL;
-	unsigned char *url, *url2;
+	char *frame = NULL;
+	char *url, *url2;
 	struct uri *uri;
 	static time_t ratelimit_start;
 	static int ratelimit_count;
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
-	if (!JS_InstanceOf(ctx, hobj, &window_class, &args)) return false;
+	if (!JS_InstanceOf(ctx, hobj, &window_class, &args)) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
+		return false;
+	}
 
 	vs = interpreter->vs;
 	doc_view = vs->doc_view;
@@ -281,7 +339,10 @@ window_open(JSContext *ctx, unsigned int argc, JS::Value *rval)
 		}
 	}
 
-	url = stracpy(jsval_to_string(ctx, args[0]));
+	url = jsval_to_string(ctx, args[0]);
+	if (!url) {
+		return true;
+	}
 	trim_chars(url, ' ', 0);
 	url2 = join_urls(doc_view->document->uri, url);
 	mem_free(url);
@@ -289,7 +350,7 @@ window_open(JSContext *ctx, unsigned int argc, JS::Value *rval)
 		return true;
 	}
 	if (argc > 1) {
-		frame = stracpy(jsval_to_string(ctx, args[1]));
+		frame = jsval_to_string(ctx, args[1]);
 		if (!frame) {
 			mem_free(url2);
 			return true;
@@ -351,17 +412,23 @@ end:
 static bool
 window_setTimeout(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
 	JS::CallArgs args = JS::CallArgsFromVp(argc, rval);
 //	struct ecmascript_interpreter *interpreter = JS_GetContextPrivate(ctx);
-	unsigned char *code;
+	char *code;
 	int timeout;
 
 	if (argc != 2)
@@ -376,34 +443,73 @@ window_setTimeout(JSContext *ctx, unsigned int argc, JS::Value *rval)
 	if (args[0].isString()) {
 		code = jsval_to_string(ctx, args[0]);
 
-		if (!*code) {
-			return true;
-		}
-		code = stracpy(code);
-
 		if (!code) {
 			return true;
 		}
 
-		ecmascript_set_timeout(interpreter, code, timeout);
+		timer_id_T id = ecmascript_set_timeout(interpreter, code, timeout);
+		JS::BigInt *bi = JS::NumberToBigInt(ctx, reinterpret_cast<int64_t>(id));
+		args.rval().setBigInt(bi);
 		return true;
 	}
+	timer_id_T id = ecmascript_set_timeout2(interpreter, args[0], timeout);
+	JS::BigInt *bi = JS::NumberToBigInt(ctx, reinterpret_cast<int64_t>(id));
+	args.rval().setBigInt(bi);
 
-	ecmascript_set_timeout2(interpreter, args[0], timeout);
 	return true;
 }
+
+/* @window_funcs{"clearTimeout"} */
+static bool
+window_clearTimeout(JSContext *ctx, unsigned int argc, JS::Value *rval)
+{
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
+	JS::Realm *comp = js::GetContextRealm(ctx);
+
+	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
+		return false;
+	}
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
+
+	JS::CallArgs args = JS::CallArgsFromVp(argc, rval);
+
+	if (argc != 1) {
+		return true;
+	}
+	JS::BigInt *bi = JS::ToBigInt(ctx, args[0]);
+	int64_t number = JS::ToBigInt64(bi);
+	timer_id_T id = reinterpret_cast<timer_id_T>(number);
+
+	if (found_in_map_timer(id) && (id == interpreter->vs->doc_view->document->timeout)) {
+		kill_timer(&id);
+	}
+	return true;
+}
+
 
 #if 0
 static bool
 window_get_property_closed(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS::MutableHandleValue hvp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	ELINKS_CAST_PROP_PARAMS
 
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
 	 * such calls.  */
-	if (!JS_InstanceOf(ctx, hobj, &window_class, NULL))
+	if (!JS_InstanceOf(ctx, hobj, &window_class, NULL)) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
+	}
 
 	boolean_to_jsval(ctx, vp, 0);
 
@@ -414,6 +520,9 @@ window_get_property_closed(JSContext *ctx, JS::HandleObject hobj, JS::HandleId h
 static bool
 window_get_property_closed(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setBoolean(false);
 
@@ -423,6 +532,9 @@ window_get_property_closed(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 window_get_property_parent(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 
 	/* XXX: It would be nice if the following worked, yes.
@@ -443,8 +555,12 @@ window_get_property_parent(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 window_get_property_self(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
-	args.rval().setObject(args.thisv().toObject());
+	JS::RootedObject hobj(ctx, &args.thisv().toObject());
+	args.rval().setObject(*hobj);
 
 	return true;
 }
@@ -452,6 +568,9 @@ window_get_property_self(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 window_get_property_status(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	args.rval().setUndefined();
 
@@ -461,26 +580,35 @@ window_get_property_status(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 window_set_property_status(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	if (args.length() != 1) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 	struct view_state *vs = interpreter->vs;
 
 	if (!vs) {
 		return true;
 	}
 
-	mem_free_set(&vs->doc_view->session->status.window_status, stracpy(JS_EncodeString(ctx, args[0].toString())));
+	mem_free_set(&vs->doc_view->session->status.window_status, jsval_to_string(ctx, args[0]));
 	print_screen_status(vs->doc_view->session);
 
 	return true;
@@ -489,25 +617,34 @@ window_set_property_status(JSContext *ctx, unsigned int argc, JS::Value *vp)
 static bool
 window_get_property_top(JSContext *ctx, unsigned int argc, JS::Value *vp)
 {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s\n", __FILE__, __FUNCTION__);
+#endif
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 
 	struct view_state *vs;
 	struct document_view *doc_view;
 	struct document_view *top_view;
 	JSObject *newjsframe;
-	JSCompartment *comp = js::GetContextCompartment(ctx);
+	JS::Realm *comp = js::GetContextRealm(ctx);
 
 	if (!comp) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 
-	struct ecmascript_interpreter *interpreter = JS_GetCompartmentPrivate(comp);
+	struct ecmascript_interpreter *interpreter = JS::GetRealmPrivate(comp);
 
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
 	vs = interpreter->vs;
 
 	if (!vs) {
+#ifdef ECMASCRIPT_DEBUG
+	fprintf(stderr, "%s:%s %d\n", __FILE__, __FUNCTION__, __LINE__);
+#endif
 		return false;
 	}
 	doc_view = vs->doc_view;

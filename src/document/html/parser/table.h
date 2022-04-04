@@ -41,13 +41,16 @@ struct part;
 #define TABLE_RULE_GROUPS	4
 
 struct html_start_end {
-	unsigned char *start, *end;
+	char *start, *end;
+	void *start_node, *end_node;
 };
 
 struct table_cell {
-	unsigned char *start;
-	unsigned char *end;
-	unsigned char *fragment_id;
+	char *start;
+	char *end;
+	void *start_node;
+	void *end_node;
+	char *fragment_id;
 	color_T bgcolor;
 	int col, row;
 	int align;
@@ -80,7 +83,7 @@ struct table_colors {
 struct table {
 	struct part *part;
 	struct table_cell *cells;
-	unsigned char *fragment_id;
+	char *fragment_id;
 	struct table_colors color;
 	int align;
 
@@ -121,10 +124,14 @@ struct table {
 #define CELL(table, col, row) (&(table)->cells[(row) * (table)->real_cols + (col)])
 
 struct table *
-parse_table(unsigned char *html, unsigned char *eof, unsigned char **end,
-	    unsigned char *attr, int sh, struct html_context *html_context);
+parse_table(char *html, char *eof, char **end,
+	    char *attr, int sh, struct html_context *html_context);
 
+struct table *new_table(void);
 void free_table(struct table *table);
+void new_columns(struct table *table, int span, int width, int align, int valign, int group);
+struct table_cell *new_cell(struct table *table, int dest_col, int dest_row);
+void set_td_width(struct table *table, int col, int width, int force);
 
 #ifdef __cplusplus
 }

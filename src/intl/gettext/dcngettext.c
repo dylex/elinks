@@ -22,12 +22,12 @@
 #include "elinks.h"
 
 #include "intl/gettext/gettextP.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 
 /* Look up MSGID in the DOMAINNAME message catalog for the current CATEGORY
    locale.  */
-unsigned char *
-dcngettext__(const unsigned char *domainname, const unsigned char *msgid1, const unsigned char *msgid2,
+char *
+dcngettext__(const char *domainname, const char *msgid1, const char *msgid2,
 	   unsigned long int n, int category)
 {
 	return dcigettext__(domainname, msgid1, msgid2, 1, n, category);

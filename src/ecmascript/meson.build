@@ -1,7 +1,7 @@
 #INCLUDES += $(SPIDERMONKEY_CFLAGS)
 if conf_data.get('CONFIG_ECMASCRIPT_SMJS')
 	subdir('spidermonkey')
-	srcs += files('ecmascript.c', 'spidermonkey.c')
+	srcs += files('css2xpath.c', 'ecmascript.c', 'localstorage-db.c', 'spidermonkey.c')
 endif
 
 if conf_data.get('CONFIG_ECMASCRIPT_SMJS')
@@ -16,3 +16,7 @@ if CONFIG_ANY_SPIDERMONKEY
 	srcs += files('spidermonkey-shared.c', 'empty.cpp')
 endif
 
+if conf_data.get('CONFIG_QUICKJS')
+	subdir('quickjs')
+	srcs += files('css2xpath.c', 'ecmascript.c', 'localstorage-db.c', 'quickjs.c', 'empty.cpp')
+endif

@@ -12,7 +12,7 @@
 #include "config/home.h"
 #include "ecmascript/spidermonkey-shared.h"
 #include "ecmascript/spidermonkey/util.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "protocol/uri.h"
 #include "scripting/scripting.h"
 #include "scripting/smjs/action_object.h"
@@ -37,13 +37,13 @@ elinks_alert(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
 	JS::CallArgs args = CallArgsFromVp(argc, rval);
 
-	unsigned char *string;
+	char *string;
 	struct terminal *term;
 
 	if (argc != 1)
 		return true;
 
-	string = JS_EncodeString(ctx, args[0].toString());
+	string = jsval_to_string(ctx, args[0]);
 
 	if (!*string)
 		return true;
@@ -73,12 +73,12 @@ elinks_execute(JSContext *ctx, unsigned int argc, JS::Value *rval)
 {
 	JS::CallArgs args = CallArgsFromVp(argc, rval);
 
-	unsigned char *string;
+	char *string;
 
 	if (argc != 1)
 		return true;
 
-	string = JS_EncodeString(ctx, args[0].toString());
+	string = jsval_to_string(ctx, args[0]);
 	if (!*string)
 		return true;
 
@@ -109,9 +109,17 @@ static bool elinks_get_property(JSContext *ctx, JS::HandleObject hobj, JS::Handl
 static bool elinks_set_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS::MutableHandleValue hvp);
 
 static const JSClassOps elinks_ops = {
-	JS_PropertyStub, nullptr,
-	elinks_get_property, elinks_set_property,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass elinks_class = {
@@ -198,15 +206,11 @@ elinks_set_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId hid, JS:
 
 	switch (JSID_TO_INT(id)) {
 	case ELINKS_LOCATION: {
-	       JSString *jsstr;
-	       unsigned char *url;
+	       char *url;
 
 	       if (!smjs_ses) return false;
 
-	       jsstr = hvp.toString();
-	       if (!jsstr) return false;
-
-	       url = JS_EncodeString(smjs_ctx, jsstr);
+	       url = jsval_to_string(smjs_ctx, hvp);
 	       if (!url) return false;
 
 	       goto_url(smjs_ses, url);
@@ -258,7 +262,7 @@ smjs_init_elinks_object(void)
 /* If elinks.<method> is defined, call it with the given arguments,
  * store the return value in rval, and return true. Else return false. */
 bool
-smjs_invoke_elinks_object_method(unsigned char *method, int argc, JS::Value *argv, JS::MutableHandleValue rval)
+smjs_invoke_elinks_object_method(char *method, int argc, JS::Value *argv, JS::MutableHandleValue rval)
 {
 	JS::CallArgs args = CallArgsFromVp(argc, argv);
 
@@ -322,8 +326,7 @@ elinks_set_property_location(JSContext *ctx, unsigned int argc, JS::Value *vp)
 	JS::CallArgs args = CallArgsFromVp(argc, vp);
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
-	JSString *jsstr;
-	unsigned char *url;
+	char *url;
 
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
@@ -333,10 +336,7 @@ elinks_set_property_location(JSContext *ctx, unsigned int argc, JS::Value *vp)
 
 	if (!smjs_ses) return false;
 
-	jsstr = args[0].toString();
-	if (!jsstr) return false;
-
-	url = JS_EncodeString(smjs_ctx, jsstr);
+	url = jsval_to_string(smjs_ctx, args[0]);
 	if (!url) return false;
 
 	goto_url(smjs_ses, url);

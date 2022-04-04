@@ -25,11 +25,13 @@
 #include "elinks.h"
 
 #include "config/options.h"
-#include "intl/gettext/libintl.h"
+#include "dialogs/status.h"
+#include "intl/libintl.h"
 #include "main/select.h"
 #include "main/timer.h"
 #include "osdep/ascii.h"
 #include "osdep/osdep.h"
+#include "session/session.h"
 #include "terminal/hardio.h"
 #include "terminal/itrm.h"
 #include "terminal/kbd.h"
@@ -91,18 +93,26 @@ enable_mouse(void)
 	if (mouse_enabled) return;
 
 	if (is_xterm()) send_mouse_init_sequence(get_output_handle());
-	ditrm->mouse_h = handle_mouse(0, (void (*)(void *, unsigned char *, int)) itrm_queue_event, ditrm);
+	ditrm->mouse_h = handle_mouse(0, (void (*)(void *, char *, int)) itrm_queue_event, ditrm);
 
 	mouse_enabled = 1;
 }
 
 void
-toggle_mouse(void)
+toggle_mouse(struct session *ses)
 {
-	if (mouse_enabled)
+	if (mouse_enabled) {
 		disable_mouse();
-	else
+	} else {
 		enable_mouse();
+	}
+
+	if (mouse_enabled) {
+		mem_free_set(&ses->status.window_status, stracpy(_("Mouse enabled", ses->tab->term)));
+	} else {
+		mem_free_set(&ses->status.window_status, stracpy(_("Mouse disabled", ses->tab->term)));
+	}
+	print_screen_status(ses);
 }
 
 static int

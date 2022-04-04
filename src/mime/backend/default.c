@@ -9,7 +9,7 @@
 #include "elinks.h"
 
 #include "config/options.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/module.h"
 #include "mime/backend/common.h"
 #include "mime/backend/default.h"
@@ -98,6 +98,7 @@ static union option_info default_mime_options[] = {
 	INIT_OPT_MIME_EXTENSION("txt",		"text/plain"),
 	INIT_OPT_MIME_EXTENSION("htm",		"text/html"),
 	INIT_OPT_MIME_EXTENSION("html",		"text/html"),
+	INIT_OPT_MIME_EXTENSION("gmi",		"text/gemini"),
 #ifdef CONFIG_BITTORRENT
 	INIT_OPT_MIME_EXTENSION("torrent",	"application/x-bittorrent"),
 #endif
@@ -110,12 +111,12 @@ static union option_info default_mime_options[] = {
 	NULL_OPTION_INFO,
 };
 
-static unsigned char *
-get_content_type_default(unsigned char *extension)
+static char *
+get_content_type_default(char *extension)
 {
 	struct option *opt_tree;
 	struct option *opt;
-	unsigned char *extend = extension + strlen(extension) - 1;
+	char *extend = extension + strlen(extension) - 1;
 
 	if (extend < extension)	return NULL;
 
@@ -123,8 +124,8 @@ get_content_type_default(unsigned char *extension)
 	assert(opt_tree);
 
 	foreach (opt, *opt_tree->value.tree) {
-		unsigned char *namepos = opt->name + strlen(opt->name) - 1;
-		unsigned char *extpos = extend;
+		char *namepos = opt->name + strlen(opt->name) - 1;
+		char *extpos = extend;
 
 		/* Match the longest possible part of URL.. */
 
@@ -149,7 +150,7 @@ get_content_type_default(unsigned char *extension)
 }
 
 static struct option *
-get_mime_type_option(unsigned char *type)
+get_mime_type_option(char *type)
 {
 	struct option *opt;
 	struct string name;
@@ -161,7 +162,7 @@ get_mime_type_option(unsigned char *type)
 
 	if (add_optname_to_string(&name, type, strlen(type))) {
 		/* Search for end of the base type. */
-		unsigned char *pos = strchr((const char *)name.source, '/');
+		char *pos = strchr((const char *)name.source, '/');
 
 		if (pos) {
 			*pos = '.';
@@ -193,7 +194,7 @@ get_mime_handler_option(struct option *type_opt, int xwin)
 }
 
 static struct mime_handler *
-get_mime_handler_default(unsigned char *type, int have_x)
+get_mime_handler_default(char *type, int have_x)
 {
 	struct option *type_opt = get_mime_type_option(type);
 	struct option *handler_opt;

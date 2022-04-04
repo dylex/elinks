@@ -334,6 +334,10 @@ static union option_info config_options_info[] = {
 		"numbering", 0, 0,
 		N_("Display numbers next to the links.")),
 
+	INIT_OPT_BOOL("document.browse.links", N_("Show go to link number dialog"),
+		"show_goto", 0, 1,
+		N_("Display go to link number dialog, when links numbering is enabled.")),
+
 	INIT_OPT_INT("document.browse.links", N_("Handling of target=_blank"),
 		"target_blank", 0, 0, 3, 0,
 		N_("Define how to handle links having target=_blank set:\n"
@@ -425,10 +429,19 @@ static union option_info config_options_info[] = {
 		"search", 0,
 		N_("Options for searching.")),
 
+	INIT_OPT_BOOL("document.browse.search", N_("Match beginning only"),
+		"beginning_only", 0, 0,
+		N_("Whether the search should match only the beginning of a link.")),
+
 	INIT_OPT_BOOL("document.browse.search", N_("Case sensitivity"),
 		"case", 0, 0,
 		N_("Whether the search should match the document text while "
 		"maintaining case sensitivity.")),
+
+	INIT_OPT_BOOL("document.browse.search", N_("Ignore history in typeahead"),
+		"ignore_history", 0, 0,
+		N_("Whether to ignore searching history in the typeahead mode. "
+		"Cursor up and cursor down will only show latest search results.")),
 
 #ifdef CONFIG_TRE
 	INIT_OPT_INT("document.browse.search", N_("Regular expressions"),
@@ -620,7 +633,7 @@ static union option_info config_options_info[] = {
 
 
 	INIT_OPT_COLOR("document.colors", N_("Text color"),
-		"text", 0, "#bfbfbf",
+		"text", 0, "#ffffff",
 		N_("Default text color.")),
 
 	INIT_OPT_COLOR("document.colors", N_("Background color"),
@@ -796,6 +809,10 @@ static union option_info config_options_info[] = {
 		"display_frames", 0, 1,
 		N_("Display frames.")),
 
+	INIT_OPT_BOOL("document.html", N_("Display iframes"),
+		"display_iframes", 0, 0,
+		N_("Display iframes. Iframe code is not finished. This option is disabled by default.")),
+
 	INIT_OPT_BOOL("document.html", N_("Display tables"),
 		"display_tables", 0, 1,
 		N_("Display tables.")),
@@ -842,6 +859,10 @@ static union option_info config_options_info[] = {
 		N_("Compress successive empty lines to only one in displayed "
 		"text.")),
 
+	INIT_OPT_BOOL("document.plain", N_("Fixup frame borders of tables"),
+		"fixup_tables", 0, 0,
+		N_("Change ascii border characters to frame borders. Usage example: "
+		"mysql --pager=elinks")),
 
 	INIT_OPT_TREE("document", N_("URI passing"),
 		"uri_passing", OPT_SORT | OPT_AUTOCREATE,
@@ -852,20 +873,31 @@ static union option_info config_options_info[] = {
 		"link and tab menu will have a submenu of items for each "
 		"rule.\n"
 		"\n"
-		"Note, this is mostly useful for launching graphical viewers, "
-		"since there is no support for releasing the terminal while "
-		"the command runs. The action and submenus are also available "
-		"by binding keys to the frame-external-command, the "
-		"link-external-command, and the tab-external-command "
-		"actions.")),
+		"The action and submenus are also available by binding keys "
+		"to the frame-external-command, the link-external-command, "
+		"and the tab-external-command actions.\n"
+		"\n"
+		"Commands run in the background by default: elinks is still "
+		"active, and they do not receive standard input. "
+		"The \"foreground\" suboption reverses this behaviour: "
+		"the command receives standard input "
+		"and elinks is blocked.\n")),
 
-	INIT_OPT_STRING("document.uri_passing", NULL,
-		"_template_", 0, "",
-		N_("A rule for passing URI to an external command. "
+	INIT_OPT_TREE("document.uri_passing", NULL,
+		"_template_", 0,
+		N_("A rule for passing URI to an external command.")),
+
+	INIT_OPT_STRING("document.uri_passing._template_", NULL,
+		"command", 0, "",
+		N_("The external command. "
 		"The format is:\n"
 		"%c in the string means the current URL\n"
 		"%% in the string means '%'\n"
 		"Do _not_ put single- or double-quotes around %c.")),
+
+	INIT_OPT_BOOL("document.uri_passing._template_", NULL,
+		"foreground", 0, 0,
+		N_("Run command in the foreground.")),
 
 	/* Keep options in alphabetical order. */
 
@@ -1487,6 +1519,14 @@ static union option_info config_options_info[] = {
 		N_("Disable mouse. "
 		"Changes take effect at the next elinks restart.")),
 #endif
+
+	INIT_OPT_BOOL("ui", N_("Back to exit"),
+		"back_to_exit", 0, 0,
+		N_("Going back from initial page exits tab or elinks.")),
+
+	INIT_OPT_BOOL("ui", N_("Double ESC"),
+		"double_esc", 0, 0,
+		N_("Back to 0.12pre5 handling of ESC key.")),
 
 	INIT_OPT_BOOL("ui", N_("Set window title"),
 		"window_title", 0, 1,

@@ -8,4 +8,6 @@ extern JSClass document_class;
 extern const spidermonkeyFunctionSpec document_funcs[];
 extern JSPropertySpec document_props[];
 
+JSObject *getDocument(JSContext *ctx, void *doc);
+
 #endif

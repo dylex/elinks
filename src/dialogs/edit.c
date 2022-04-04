@@ -10,7 +10,7 @@
 
 #include "bfu/dialog.h"
 #include "dialogs/edit.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "session/session.h"
 #include "terminal/terminal.h"
 #include "util/color.h"
@@ -39,9 +39,9 @@ my_cancel_dialog(struct dialog_data *dlg_data, struct widget_data *widget_data)
 /* TODO: In bookmark/dialogs.c most users seem to want also the dialog_data
  * so we should make when_*() functions take dialog_data instead. --jonas */
 void
-do_edit_dialog(struct terminal *term, int intl, unsigned char *title,
-	       const unsigned char *src_name,
-	       const unsigned char *src_url,
+do_edit_dialog(struct terminal *term, int intl, char *title,
+	       const char *src_name,
+	       const char *src_url,
 	       struct session *ses, struct dialog_data *parent,
 	       done_handler_T *when_done,
 	       void when_cancel(struct dialog *),
@@ -49,7 +49,7 @@ do_edit_dialog(struct terminal *term, int intl, unsigned char *title,
 	       enum edit_dialog_type dialog_type)
 {
 	/* [gettext_accelerator_context(do_edit_dialog)] */
-	unsigned char *name, *url;
+	char *name, *url;
 	struct dialog *dlg;
 
 	if (intl) title = _(title, term);

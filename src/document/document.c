@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef HAVE_IDNA_H
+#include <idna.h>
+#endif
+
 #include <sys/types.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h> /* OS/2 needs this after sys/types.h */
@@ -50,11 +54,20 @@
 #include "document/document.h"
 #include "document/forms.h"
 #include "document/html/frames.h"
+#include "document/html/iframes.h"
 #include "document/html/parser.h"
 #include "document/html/parser/parse.h"
 #include "document/html/renderer.h"
 #include "document/options.h"
 #include "document/refresh.h"
+
+#ifdef CONFIG_ECMASCRIPT
+#include "ecmascript/ecmascript.h"
+#endif
+#ifdef CONFIG_ECMASCRIPT_SMJS
+#include "ecmascript/spidermonkey.h"
+#endif
+
 #include "main/module.h"
 #include "main/object.h"
 #include "network/dns.h"
@@ -74,10 +87,10 @@ static INIT_LIST_OF(struct document, format_cache);
 static void
 found_dns(void *data, struct sockaddr_storage *addr, int addrlen)
 {
-	unsigned char buf[64];
-	const unsigned char *res;
+	char buf[64];
+	const char *res;
 	struct sockaddr *s;
-	unsigned char **ip = (unsigned char **)data;
+	char **ip = (char **)data;
 	void *src;
 
 	if (!ip || !addr) return;
@@ -99,13 +112,22 @@ get_ip(struct document *document)
 {
 #ifdef HAVE_INET_NTOP
 	struct uri *uri = document->uri;
-	char tmp;
+	char *host = memacpy(uri->host, uri->hostlen);
 
-	if (!uri || !uri->host || !uri->hostlen) return;
-	tmp = uri->host[uri->hostlen];
-	uri->host[uri->hostlen] = 0;
-	find_host(uri->host, &document->querydns, found_dns, &document->ip, 0);
-	uri->host[uri->hostlen] = tmp;
+	if (host) {
+#ifdef CONFIG_IDN
+		char *idname;
+		int code = idna_to_ascii_lz(host, &idname, 0);
+
+		if (code == IDNA_SUCCESS) {
+			find_host(idname, &document->querydns, found_dns, &document->ip, 0);
+			free(idname);
+		}
+#else
+		find_host(host, &document->querydns, found_dns, &document->ip, 0);
+#endif
+		mem_free(host);
+	}
 #endif
 }
 
@@ -164,6 +186,25 @@ free_frameset_desc(struct frameset_desc *frameset_desc)
 	mem_free(frameset_desc);
 }
 
+static void
+free_iframeset_desc(struct iframeset_desc *iframeset_desc)
+{
+	int i;
+
+	for (i = 0; i < iframeset_desc->n; i++) {
+		struct iframe_desc *iframe_desc = &iframeset_desc->iframe_desc[i];
+
+//		if (iframe_desc->subframe)
+//			free_iframeset_desc(frame_desc->subframe);
+		mem_free_if(iframe_desc->name);
+		if (iframe_desc->uri)
+			done_uri(iframe_desc->uri);
+	}
+
+	mem_free(iframeset_desc);
+}
+
+
 void
 done_link_members(struct link *link)
 {
@@ -185,6 +226,90 @@ done_link_members(struct link *link)
 }
 
 void
+reset_document(struct document *document)
+{
+	assert(document);
+	if_assert_failed return;
+
+///	assertm(!is_object_used(document), "Attempt to free locked formatted data.");
+///	if_assert_failed return;
+
+	assert(document->cached);
+	object_unlock(document->cached);
+
+///	if (document->uri) {
+///		done_uri(document->uri);
+///		document->uri = NULL;
+///	}
+///	if (document->querydns) {
+///		kill_dns_request(&document->querydns);
+///		document->querydns = NULL;
+///	}
+///	mem_free_set(&document->ip, NULL);
+///	mem_free_set(&document->title, NULL);
+///	if (document->frame_desc) {
+///		free_frameset_desc(document->frame_desc);
+///		document->frame_desc = NULL;
+///	}
+///	if (document->refresh) {
+///		done_document_refresh(document->refresh);
+///		document->refresh = NULL;
+///	}
+
+	if (document->links) {
+		int pos;
+
+		for (pos = 0; pos < document->nlinks; pos++)
+			done_link_members(&document->links[pos]);
+
+		mem_free_set(&document->links, NULL);
+		document->nlinks = 0;
+	}
+
+	if (document->data) {
+		int pos;
+
+		for (pos = 0; pos < document->height; pos++)
+			mem_free_if(document->data[pos].chars);
+
+		mem_free_set(&document->data, NULL);
+		document->height = 0;
+	}
+
+	mem_free_set(&document->lines1, NULL);
+	mem_free_set(&document->lines2, NULL);
+	document->options.was_xml_parsed = 1;
+///	done_document_options(&document->options);
+
+	while (!list_empty(document->forms)) {
+		done_form(document->forms.next);
+	}
+
+#ifdef CONFIG_CSS
+	free_uri_list(&document->css_imports);
+#endif
+#ifdef CONFIG_ECMASCRIPT
+	free_string_list(&document->onload_snippets);
+	free_uri_list(&document->ecmascript_imports);
+	mem_free_set(&document->text, NULL);
+///	kill_timer(&document->timeout);
+///	free_document(document->dom);
+#endif
+
+	free_list(document->tags);
+	free_list(document->nodes);
+
+	mem_free_set(&document->search, NULL);
+	mem_free_set(&document->slines1, NULL);
+	mem_free_set(&document->slines2, NULL);
+	mem_free_set(&document->search_points, NULL);
+
+#ifdef CONFIG_COMBINE
+	discard_comb_x_y(document);
+#endif
+}
+
+void
 done_document(struct document *document)
 {
 	assert(document);
@@ -201,6 +326,7 @@ done_document(struct document *document)
 	mem_free_if(document->ip);
 	mem_free_if(document->title);
 	if (document->frame_desc) free_frameset_desc(document->frame_desc);
+	if (document->iframe_desc) free_iframeset_desc(document->iframe_desc);
 	if (document->refresh) done_document_refresh(document->refresh);
 
 	if (document->links) {
@@ -236,6 +362,8 @@ done_document(struct document *document)
 	free_string_list(&document->onload_snippets);
 	free_uri_list(&document->ecmascript_imports);
 	kill_timer(&document->timeout);
+	mem_free_if(document->text);
+	free_document(document->dom);
 #endif
 
 	free_list(document->tags);
@@ -265,7 +393,7 @@ release_document(struct document *document)
 }
 
 int
-find_tag(struct document *document, unsigned char *name, int namelen)
+find_tag(struct document *document, char *name, int namelen)
 {
 	struct tag *tag;
 
@@ -281,7 +409,7 @@ find_tag(struct document *document, unsigned char *name, int namelen)
 /* ECMAScript doesn't like anything like CSS since it doesn't modify the
  * formatted document (yet). */
 
-#if CONFIG_CSS
+#ifdef CONFIG_CSS
 unsigned long
 get_document_css_magic(struct document *document)
 {

@@ -52,10 +52,10 @@
 /* TODO: This needs rewrite. Yes, no kidding. */
 
 static int
-extract_color(struct html_context *html_context, unsigned char *a,
-	      unsigned char *attribute, color_T *rgb)
+extract_color(struct html_context *html_context, char *a,
+	      char *attribute, color_T *rgb)
 {
-	unsigned char *value;
+	char *value;
 	int retval;
 
 	value = get_attr_val(a, attribute, html_context->doc_cp);
@@ -68,8 +68,8 @@ extract_color(struct html_context *html_context, unsigned char *a,
 }
 
 int
-get_color(struct html_context *html_context, unsigned char *a,
-	  unsigned char *attribute, color_T *rgb)
+get_color(struct html_context *html_context, char *a,
+	  char *attribute, color_T *rgb)
 {
 	if (!use_document_fg_colors(html_context->options))
 		return -1;
@@ -78,7 +78,20 @@ get_color(struct html_context *html_context, unsigned char *a,
 }
 
 int
-get_bgcolor(struct html_context *html_context, unsigned char *a, color_T *rgb)
+get_color2(struct html_context *html_context, char *value_value, color_T *rgb)
+{
+	if (!use_document_fg_colors(html_context->options))
+		return -1;
+
+	if (!value_value)
+		return -1;
+
+	return decode_color(value_value, strlen(value_value), rgb);
+}
+
+
+int
+get_bgcolor(struct html_context *html_context, char *a, color_T *rgb)
 {
 	if (!use_document_bg_colors(html_context->options))
 		return -1;
@@ -86,12 +99,12 @@ get_bgcolor(struct html_context *html_context, unsigned char *a, color_T *rgb)
 	return extract_color(html_context, a, "bgcolor", rgb);
 }
 
-unsigned char *
-get_target(struct document_options *options, unsigned char *a)
+char *
+get_target(struct document_options *options, char *a)
 {
 	/* FIXME (bug 784): options->cp is the terminal charset;
 	 * should use the document charset instead.  */
-	unsigned char *v = get_attr_val(a, "target", options->cp);
+	char *v = get_attr_val(a, "target", options->cp);
 
 	if (!v) return NULL;
 
@@ -116,7 +129,7 @@ ln_break(struct html_context *html_context, int n)
 }
 
 void
-put_chrs(struct html_context *html_context, unsigned char *start, int len)
+put_chrs(struct html_context *html_context, char *start, int len)
 {
 	if (html_is_preformatted())
 		html_context->putsp = HTML_SPACE_NORMAL;
@@ -149,8 +162,9 @@ put_chrs(struct html_context *html_context, unsigned char *start, int len)
 		break;
 	}
 
-	if (isspace(start[len - 1]) && !html_is_preformatted())
+	if (isspace(start[len - 1]) && !html_is_preformatted()) {
 		html_context->putsp = HTML_SPACE_SUPPRESS;
+	}
 	html_context->was_br = 0;
 
 	html_context->put_chars_f(html_context, start, len);
@@ -163,9 +177,9 @@ put_chrs(struct html_context *html_context, unsigned char *start, int len)
 
 void
 set_fragment_identifier(struct html_context *html_context,
-                        unsigned char *attr_name, unsigned char *attr)
+                        char *attr_name, char *attr)
 {
-	unsigned char *id_attr;
+	char *id_attr;
 
 	id_attr = get_attr_val(attr_name, attr, html_context->doc_cp);
 
@@ -177,7 +191,7 @@ set_fragment_identifier(struct html_context *html_context,
 
 void
 add_fragment_identifier(struct html_context *html_context,
-                        struct part *part, unsigned char *attr)
+                        struct part *part, char *attr)
 {
 	struct part *saved_part = html_context->part;
 
@@ -189,11 +203,11 @@ add_fragment_identifier(struct html_context *html_context,
 #ifdef CONFIG_CSS
 void
 import_css_stylesheet(struct css_stylesheet *css, struct uri *base_uri,
-		      const unsigned char *unterminated_url, int len)
+		      const char *unterminated_url, int len)
 {
 	struct html_context *html_context = css->import_data;
-	unsigned char *url;
-	unsigned char *import_url;
+	char *url;
+	char *import_url;
 	struct uri *uri;
 
 	assert(html_context);
@@ -238,14 +252,14 @@ import_css_stylesheet(struct css_stylesheet *css, struct uri *base_uri,
  * attributes even near tags where we're not supposed to (like IFRAME, FRAME or
  * LINK). I think this doesn't make any harm ;). --pasky */
 void
-html_focusable(struct html_context *html_context, unsigned char *a)
+html_focusable(struct html_context *html_context, char *a)
 {
-	unsigned char *accesskey;
+	char *accesskey;
 	int cp;
 	int tabindex;
 
-	format.accesskey = 0;
-	format.tabindex = 0x80000000;
+	elformat.accesskey = 0;
+	elformat.tabindex = 0x80000000;
 
 	if (!a) return;
 
@@ -253,37 +267,37 @@ html_focusable(struct html_context *html_context, unsigned char *a)
 
 	accesskey = get_attr_val(a, "accesskey", cp);
 	if (accesskey) {
-		format.accesskey = accesskey_string_to_unicode(accesskey);
+		elformat.accesskey = accesskey_string_to_unicode(accesskey);
 		mem_free(accesskey);
 	}
 
 	tabindex = get_num(a, "tabindex", cp);
 	if (0 < tabindex && tabindex < 32767) {
-		format.tabindex = (tabindex & 0x7fff) << 16;
+		elformat.tabindex = (tabindex & 0x7fff) << 16;
 	}
 
-	mem_free_set(&format.onclick, get_attr_val(a, "onclick", cp));
-	mem_free_set(&format.ondblclick, get_attr_val(a, "ondblclick", cp));
-	mem_free_set(&format.onmouseover, get_attr_val(a, "onmouseover", cp));
-	mem_free_set(&format.onhover, get_attr_val(a, "onhover", cp));
-	mem_free_set(&format.onfocus, get_attr_val(a, "onfocus", cp));
-	mem_free_set(&format.onmouseout, get_attr_val(a, "onmouseout", cp));
-	mem_free_set(&format.onblur, get_attr_val(a, "onblur", cp));
+	mem_free_set(&elformat.onclick, get_attr_val(a, "onclick", cp));
+	mem_free_set(&elformat.ondblclick, get_attr_val(a, "ondblclick", cp));
+	mem_free_set(&elformat.onmouseover, get_attr_val(a, "onmouseover", cp));
+	mem_free_set(&elformat.onhover, get_attr_val(a, "onhover", cp));
+	mem_free_set(&elformat.onfocus, get_attr_val(a, "onfocus", cp));
+	mem_free_set(&elformat.onmouseout, get_attr_val(a, "onmouseout", cp));
+	mem_free_set(&elformat.onblur, get_attr_val(a, "onblur", cp));
 }
 
 void
-html_skip(struct html_context *html_context, unsigned char *a)
+html_skip(struct html_context *html_context, char *a)
 {
 	html_top->invisible = 1;
 	html_top->type = ELEMENT_DONT_KILL;
 }
 
 static void
-check_head_for_refresh(struct html_context *html_context, unsigned char *head)
+check_head_for_refresh(struct html_context *html_context, char *head)
 {
-	unsigned char *refresh;
-	unsigned char *url = NULL;
-	unsigned char *joined_url = NULL;
+	char *refresh;
+	char *url = NULL;
+	char *joined_url = NULL;
 	unsigned long seconds;
 
 	refresh = parse_header(head, "Refresh", NULL);
@@ -321,9 +335,9 @@ check_head_for_refresh(struct html_context *html_context, unsigned char *head)
 
 static void
 check_head_for_cache_control(struct html_context *html_context,
-                             unsigned char *head)
+                             char *head)
 {
-	unsigned char *d;
+	char *d;
 	int no_cache = 0;
 	time_t expires = 0;
 
@@ -347,7 +361,7 @@ check_head_for_cache_control(struct html_context *html_context,
 			no_cache = 1;
 
 		} else  {
-			unsigned char *pos = strstr((const char *)d, "max-age=");
+			char *pos = strstr((const char *)d, "max-age=");
 
 			assert(!no_cache);
 
@@ -388,7 +402,7 @@ check_head_for_cache_control(struct html_context *html_context,
 }
 
 void
-process_head(struct html_context *html_context, unsigned char *head)
+process_head(struct html_context *html_context, char *head)
 {
 	check_head_for_refresh(html_context, head);
 
@@ -399,10 +413,10 @@ process_head(struct html_context *html_context, unsigned char *head)
 
 
 static int
-look_for_map(unsigned char **pos, unsigned char *eof, struct uri *uri,
+look_for_map(char **pos, char *eof, struct uri *uri,
              struct document_options *options)
 {
-	unsigned char *al, *attr, *name;
+	char *al, *attr, *name;
 	int namelen;
 
 	while (*pos < eof && **pos != '<') {
@@ -441,10 +455,10 @@ look_for_map(unsigned char **pos, unsigned char *eof, struct uri *uri,
 }
 
 static int
-look_for_tag(unsigned char **pos, unsigned char *eof,
-	     unsigned char *name, int namelen, unsigned char **label)
+look_for_tag(char **pos, char *eof,
+	     char *name, int namelen, char **label)
 {
-	unsigned char *pos2;
+	char *pos2;
 	struct string str;
 
 	if (!init_string(&str)) {
@@ -493,13 +507,13 @@ look_for_tag(unsigned char **pos, unsigned char *eof,
  * tag is found (in which case this also adds *@a menu to *@a ml); or
  * 1 if this should be called again.  */
 static int
-look_for_link(unsigned char **pos, unsigned char *eof, struct menu_item **menu,
+look_for_link(char **pos, char *eof, struct menu_item **menu,
 	      struct memory_list **ml, struct uri *href_base,
-	      unsigned char *target_base, struct conv_table *ct,
+	      char *target_base, struct conv_table *ct,
 	      struct document_options *options)
 {
-	unsigned char *attr, *href, *name, *target;
-	unsigned char *label = NULL; /* shut up warning */
+	char *attr, *href, *name, *target;
+	char *label = NULL; /* shut up warning */
 	struct link_def *ld;
 	struct menu_item *nm;
 	int nmenu;
@@ -529,7 +543,7 @@ look_for_link(unsigned char **pos, unsigned char *eof, struct menu_item **menu,
 	} else if (!c_strlcasecmp(name, namelen, "AREA", 4)) {
 		/* FIXME (bug 784): options->cp is the terminal charset;
 		 * should use the document charset instead.  */
-		unsigned char *alt = get_attr_val(attr, "alt", options->cp);
+		char *alt = get_attr_val(attr, "alt", options->cp);
 
 		if (alt) {
 			/* CSM_NONE because get_attr_val() already
@@ -637,9 +651,9 @@ look_for_link(unsigned char **pos, unsigned char *eof, struct menu_item **menu,
 
 
 int
-get_image_map(unsigned char *head, unsigned char *pos, unsigned char *eof,
+get_image_map(char *head, char *pos, char *eof,
 	      struct menu_item **menu, struct memory_list **ml, struct uri *uri,
-	      struct document_options *options, unsigned char *target_base,
+	      struct document_options *options, char *target_base,
 	      int to, int def, int hdef)
 {
 	struct conv_table *ct;
@@ -692,15 +706,15 @@ init_html_parser_state(struct html_context *html_context,
 {
 	html_stack_dup(html_context, type);
 
-	par_format.align = align;
+	par_elformat.align = align;
 
 	if (type <= ELEMENT_IMMORTAL) {
-		par_format.leftmargin = margin;
-		par_format.rightmargin = margin;
-		par_format.width = width;
-		par_format.list_level = 0;
-		par_format.list_number = 0;
-		par_format.dd_margin = 0;
+		par_elformat.leftmargin = margin;
+		par_elformat.rightmargin = margin;
+		par_elformat.width = width;
+		par_elformat.list_level = 0;
+		par_elformat.list_number = 0;
+		par_elformat.dd_margin = 0;
 		html_top->namelen = 0;
 	}
 
@@ -743,9 +757,9 @@ done_html_parser_state(struct html_context *html_context,
  *   and entities have not been decoded.  */
 struct html_context *
 init_html_parser(struct uri *uri, struct document_options *options,
-		 unsigned char *start, unsigned char *end,
+		 char *start, char *end,
 		 struct string *head, struct string *title,
-		 void (*put_chars)(struct html_context *, unsigned char *, int),
+		 void (*put_chars)(struct html_context *, char *, int),
 		 void (*line_break)(struct html_context *),
 		 void *(*special)(struct html_context *, enum html_special_type, ...))
 {
@@ -774,6 +788,7 @@ init_html_parser(struct uri *uri, struct document_options *options,
 	html_context->base_target = null_or_stracpy(options->framename);
 
 	html_context->options = options;
+	html_context->was_xml_parsed = options->was_xml_parsed;
 
 	/* FIXME (bug 784): cp is the terminal charset;
 	 * should use the document charset instead.  */
@@ -783,34 +798,34 @@ init_html_parser(struct uri *uri, struct document_options *options,
 	if (!e) return NULL;
 	add_to_list(html_context->stack, e);
 
-	format.style.attr = 0;
-	format.fontsize = 3;
-	format.link = format.target = format.image = NULL;
-	format.onclick = format.ondblclick = format.onmouseover = format.onhover
-		= format.onfocus = format.onmouseout = format.onblur = NULL;
-	format.select = NULL;
-	format.form = NULL;
-	format.title = NULL;
+	elformat.style.attr = 0;
+	elformat.fontsize = 3;
+	elformat.link = elformat.target = elformat.image = NULL;
+	elformat.onclick = elformat.ondblclick = elformat.onmouseover = elformat.onhover
+		= elformat.onfocus = elformat.onmouseout = elformat.onblur = NULL;
+	elformat.select = NULL;
+	elformat.form = NULL;
+	elformat.title = NULL;
 
-	format.style = options->default_style;
-	format.color.clink = options->default_color.link;
-	format.color.vlink = options->default_color.vlink;
+	elformat.style = options->default_style;
+	elformat.color.clink = options->default_color.link;
+	elformat.color.vlink = options->default_color.vlink;
 #ifdef CONFIG_BOOKMARKS
-	format.color.bookmark_link = options->default_color.bookmark_link;
+	elformat.color.bookmark_link = options->default_color.bookmark_link;
 #endif
-	format.color.image_link = options->default_color.image_link;
-	format.color.link_number = options->default_color.link_number;
+	elformat.color.image_link = options->default_color.image_link;
+	elformat.color.link_number = options->default_color.link_number;
 
-	par_format.align = ALIGN_LEFT;
-	par_format.leftmargin = options->margin;
-	par_format.rightmargin = options->margin;
+	par_elformat.align = ALIGN_LEFT;
+	par_elformat.leftmargin = options->margin;
+	par_elformat.rightmargin = options->margin;
 
-	par_format.width = options->document_width;
-	par_format.list_level = par_format.list_number = 0;
-	par_format.dd_margin = options->margin;
-	par_format.flags = P_DISC;
+	par_elformat.width = options->document_width;
+	par_elformat.list_level = par_elformat.list_number = 0;
+	par_elformat.dd_margin = options->margin;
+	par_elformat.flags = P_DISC;
 
-	par_format.color.background = options->default_style.color.background;
+	par_elformat.color.background = options->default_style.color.background;
 
 	html_top->invisible = 0;
 	html_top->name = NULL;

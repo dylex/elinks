@@ -64,7 +64,7 @@ struct tag {
 	LIST_HEAD(struct tag);
 
 	int x, y;
-	unsigned char name[1]; /* must be last of struct. --Zas */
+	char name[1]; /* must be last of struct. --Zas */
 };
 
 
@@ -92,7 +92,7 @@ struct script_event_hook {
 	LIST_HEAD(struct script_event_hook);
 
 	enum script_event_hook_type type;
-	unsigned char *src;
+	char *src;
 };
 
 struct link {
@@ -100,13 +100,13 @@ struct link {
 
 	enum link_type type;
 
-	unsigned char *where;
-	unsigned char *target;
-	unsigned char *where_img;
+	char *where;
+	char *target;
+	char *where_img;
 
 	/** The title of the link.  This is in the document charset,
 	 * and entities have already been decoded.  */
-	unsigned char *title;
+	char *title;
 
 	/** The set of characters belonging to this link (their coordinates
 	 * in the document) - each character has own struct point. */
@@ -125,7 +125,7 @@ struct link {
 	LIST_OF(struct script_event_hook) *event_hooks;
 
 	union {
-		unsigned char *name;
+		char *name;
 		struct el_form_control *form_control;
 	} data;
 };
@@ -210,6 +210,10 @@ struct document {
 	struct uri_list ecmascript_imports;
 	/** used by setTimeout */
 	timer_id_T timeout;
+	int ecmascript_counter;
+	void *dom;
+	char *text;
+	void *forms_nodeset;
 #endif
 #ifdef CONFIG_CSS
 	/** @todo FIXME: We should externally maybe using cache_entry store the
@@ -220,15 +224,16 @@ struct document {
 	 * Used for checking rerendering for available CSS imports. */
 	unsigned long css_magic;
 #endif
+	struct iframeset_desc *iframe_desc;
 
 	struct uri *uri;
 
 	/* for obtaining IP */
 	void *querydns;
-	unsigned char *ip;
+	char *ip;
 	/** The title of the document.  The charset of this string is
 	 * document.options.cp.  */
-	unsigned char *title;
+	char *title;
 	struct cache_entry *cached;
 
 	struct frame_desc *frame;
@@ -250,7 +255,7 @@ struct document {
 	struct point *search_points;
 
 #ifdef CONFIG_UTF8
-	unsigned char buf[7];
+	char buf[7];
 	unsigned char buf_length;
 #endif
 #ifdef CONFIG_COMBINE
@@ -281,6 +286,7 @@ struct document {
 };
 
 #define document_has_frames(document_) ((document_) && (document_)->frame_desc)
+#define document_has_iframes(document_) ((document_) && (document_)->iframe_desc)
 
 /** Initializes a document and its canvas.
  * @returns NULL on allocation failure.
@@ -307,6 +313,9 @@ struct document *get_cached_document(struct cache_entry *cached, struct document
  * @relates document */
 void release_document(struct document *document);
 
+void reset_document(struct document *document);
+
+
 int get_format_cache_size(void);
 int get_format_cache_used_count(void);
 int get_format_cache_refresh_count(void);
@@ -321,7 +330,7 @@ extern struct module document_module;
  * For now, we only support simple printable character.  */
 #define accesskey_string_to_unicode(s) (((s)[0] && !(s)[1] && isprint((s)[0])) ? (s)[0] : 0)
 
-int find_tag(struct document *document, unsigned char *name, int namelen);
+int find_tag(struct document *document, char *name, int namelen);
 
 #ifdef __cplusplus
 }

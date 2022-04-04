@@ -10,9 +10,7 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#ifdef HAVE_TIME_H
 #include <time.h>
-#endif
 
 #include "elinks.h"
 
@@ -20,7 +18,7 @@
 #include "config/options.h"
 #include "document/document.h"
 #include "document/view.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "main/module.h"
 #include "main/timer.h"
 #include "session/session.h"
@@ -67,6 +65,10 @@ enum led_option {
 
 	LEDS_SHOW_IP_ENABLE,
 
+	LEDS_TEMPERATURE_TREE,
+	LEDS_TEMPERATURE_ENABLE,
+	LEDS_TEMPERATURE_FILENAME,
+
 	LEDS_PANEL_TREE,
 	LEDS_PANEL_ENABLE,
 
@@ -94,6 +96,17 @@ static union option_info led_options[] = {
 		"show_ip", 0, 0,
 		N_("Whether to display IP of the document in the status bar.")),
 
+	INIT_OPT_TREE("ui", N_("Temperature"),
+		"temperature", 0, N_("Temperature of CPU.")),
+
+	INIT_OPT_BOOL("ui.temperature", N_("Enable"),
+		"enable", 0, 0,
+		N_("Whether to display temperature of the CPU in the status bar.")),
+
+	INIT_OPT_STRING("ui.temperature", N_("Filename"),
+		"filename", 0, "/sys/class/thermal/thermal_zone0/temp",
+		N_("Filename to see temperature.")),
+
 
 	INIT_OPT_TREE("ui", N_("LEDs"),
 		"leds", 0,
@@ -112,6 +125,8 @@ static union option_info led_options[] = {
 #define get_leds_clock_format()		get_opt_leds(LEDS_CLOCK_FORMAT).string
 #define get_leds_panel_enable()		get_opt_leds(LEDS_PANEL_ENABLE).number
 #define get_leds_show_ip_enable()	get_opt_leds(LEDS_SHOW_IP_ENABLE).number
+#define get_leds_temperature_enable()	get_opt_leds(LEDS_TEMPERATURE_ENABLE).number
+#define get_leds_temperature_filename()		get_opt_leds(LEDS_TEMPERATURE_FILENAME).string
 
 void
 init_leds(struct module *module)
@@ -165,7 +180,7 @@ init_led_panel(struct led_panel *leds)
 static int
 draw_timer(struct terminal *term, int xpos, int ypos, struct color_pair *color)
 {
-	unsigned char s[64];
+	char s[64];
 	int i, length;
 
 	snprintf(s, sizeof(s), "[%d]", get_timer_duration());
@@ -180,10 +195,9 @@ draw_timer(struct terminal *term, int xpos, int ypos, struct color_pair *color)
 static int
 draw_show_ip(struct session *ses, int xpos, int ypos, struct color_pair *color)
 {
-
 	if (ses->doc_view && ses->doc_view->document && ses->doc_view->document->ip) {
 		struct terminal *term = ses->tab->term;
-		unsigned char *s = ses->doc_view->document->ip;
+		char *s = ses->doc_view->document->ip;
 		int length = strlen(s);
 		int i;
 
@@ -195,12 +209,52 @@ draw_show_ip(struct session *ses, int xpos, int ypos, struct color_pair *color)
 	return 0;
 }
 
+static int
+draw_temperature(struct session *ses, int xpos, int ypos, struct color_pair *color)
+{
+	struct terminal *term = ses->tab->term;
+	FILE *f;
+	int temp = 0;
+	struct string text;
+	int i;
+	int length;
+	char *pos, *end;
+
+	f = fopen(get_leds_temperature_filename(), "r");
+
+	if (!f) return 0;
+	fscanf(f, "%d", &temp);
+	fclose(f);
+	init_string(&text);
+	add_format_to_string(&text, "[%d°C]", (int)(temp * 0.001 + 0.5));
+#ifdef CONFIG_UTF8
+	length = utf8_ptr2cells(text.source, NULL);
+#else
+	length = text.length;
+#endif
+	end = text.source + text.length;
+	for (i = 0, pos = text.source; i < length; i++) {
+#ifdef CONFIG_UTF8
+		unicode_val_T data = utf8_to_unicode(&pos, end);
+		if (data == UCS_NO_CHAR) {
+			--i;
+			continue;
+		}
+#else
+		unsigned char data = pos[i];
+#endif
+		draw_char(term, xpos - length + i, ypos, data, 0, color);
+	}
+	done_string(&text);
+
+	return length;
+}
 
 #ifdef HAVE_STRFTIME
 static int
 draw_clock(struct terminal *term, int xpos, int ypos, struct color_pair *color)
 {
-	unsigned char s[64];
+	char s[64];
 	time_t curtime = time(NULL);
 	struct tm *loctime = localtime(&curtime);
 	int i, length;
@@ -261,6 +315,12 @@ draw_leds(struct session *ses)
 		term->leds_length += draw_clock(term, xpos - term->leds_length, ypos, led_color);
 	}
 #endif
+
+	if (get_leds_temperature_enable()) {
+		struct color_pair *color = get_bfu_color(term, "status.status-text");
+
+		if (color) term->leds_length += draw_temperature(ses, xpos - term->leds_length, ypos, color);
+	}
 
 	if (get_leds_show_ip_enable()) {
 		struct color_pair *color = get_bfu_color(term, "status.showip-text");

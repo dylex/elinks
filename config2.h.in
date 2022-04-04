@@ -82,11 +82,18 @@
 /* Define if you want: FTP protocol support */
 #mesondefine CONFIG_FTP
 
+/* Define if you want: Gemini protocol support */
+#mesondefine CONFIG_GEMINI
+
+/* Define to 1 if you want libc gettext. */
+#mesondefine CONFIG_GETTEXT
+
 /* Define if you want: Global history support */
 #mesondefine CONFIG_GLOBHIST
 
 /* Define if you want: GNUTLS support */
 #mesondefine CONFIG_GNUTLS
+
 
 /* Define if you want: Gopher protocol support */
 #mesondefine CONFIG_GOPHER
@@ -189,6 +196,9 @@
 /* Define if you want: Pod2HTML support */
 #mesondefine CONFIG_POD2HTML
 
+/* Define if you want: QuickJS support */
+#mesondefine CONFIG_QUICKJS
+
 /* Define if you want: Browser scripting support */
 #mesondefine CONFIG_SCRIPTING
 
@@ -241,6 +251,9 @@
 
 /* Define if you want: XBEL bookmarks support */
 #mesondefine CONFIG_XBEL_BOOKMARKS
+
+/* Define if you want: libxml++ support */
+#mesondefine CONFIG_XML
 
 /* Define if you want: XmlTo support */
 #mesondefine CONFIG_XMLTO
@@ -512,12 +525,6 @@
 /* Define to 1 if you have the `socket' library (-lsocket). */
 #mesondefine HAVE_LIBSOCKET
 
-/* Define to 1 if you have the <limits.h> header file. */
-#mesondefine HAVE_LIMITS_H
-
-/* Define to 1 if you have the <locale.h> header file. */
-#mesondefine HAVE_LOCALE_H
-
 /* Define if you have long long */
 #mesondefine HAVE_LONG_LONG
 
@@ -648,14 +655,8 @@
 /* Define to 1 if you have the `snprintf' function. */
 #mesondefine HAVE_SNPRINTF
 
-/* Define to 1 if you have the <stddef.h> header file. */
-#mesondefine HAVE_STDDEF_H
-
 /* Define to 1 if you have the <stdint.h> header file. */
 #mesondefine HAVE_STDINT_H
-
-/* Define to 1 if you have the <stdlib.h> header file. */
-#mesondefine HAVE_STDLIB_H
 
 /* Define to 1 if you have the `stpcpy' function. */
 #mesondefine HAVE_STPCPY
@@ -680,9 +681,6 @@
 
 /* Define to 1 if you have the <strings.h> header file. */
 #mesondefine HAVE_STRINGS_H
-
-/* Define to 1 if you have the <string.h> header file. */
-#mesondefine HAVE_STRING_H
 
 /* Define to 1 if you have the `strncasecmp' function. */
 #mesondefine HAVE_STRNCASECMP
@@ -760,9 +758,6 @@
 
 /* Define to 1 if you have the `timegm' function. */
 #mesondefine HAVE_TIMEGM
-
-/* Define to 1 if you have the <time.h> header file. */
-#mesondefine HAVE_TIME_H
 
 /* Define to 1 if you have the `tsearch' function. */
 #mesondefine HAVE_TSEARCH

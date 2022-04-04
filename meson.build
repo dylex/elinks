@@ -1,4 +1,4 @@
-project('elinks', ['c','cpp'], version:'0.14.1', license:'GPLv2')
+project('elinks', ['c','cpp'], version:'0.15.0', license:'GPLv2')
 srcs=[]
 
 srcdir = meson.source_root()
@@ -8,15 +8,16 @@ dirty = run_command(srcdir + '/git-dirty.sh').stdout().strip()
 add_global_arguments('-DBUILD_ID="' + txt + dirty + '"', language : 'c')
 
 conf_data = configuration_data()
-conf_data.set('VERSION', '0.14.1')
-conf_data.set('PACKAGE', 'elinks')
+conf_data.set('VERSION', meson.project_version())
+conf_data.set('PACKAGE', meson.project_name())
 
 
 conf_data.set('CONFIG_LARGEFILE', get_option('largefile'))
 conf_data.set('CONFIG_BOOKMARKS', get_option('bookmarks'))
 conf_data.set('CONFIG_XBEL_BOOKMARKS', get_option('xbel'))
 conf_data.set('CONFIG_SCRIPTING_SPIDERMONKEY', get_option('sm-scripting'))
-conf_data.set10('CONFIG_NLS', get_option('nls'))
+conf_data.set('CONFIG_NLS', get_option('nls'))
+conf_data.set('CONFIG_GETTEXT', get_option('gettext'))
 
 conf_data.set('CONFIG_COOKIES', get_option('cookies'))
 conf_data.set('CONFIG_FORMHIST', get_option('formhist'))
@@ -26,6 +27,7 @@ conf_data.set('CONFIG_MIMETYPES', get_option('mimetypes'))
 conf_data.set('CONFIG_IPV6', get_option('ipv6'))
 conf_data.set('CONFIG_BITTORRENT', get_option('bittorrent'))
 conf_data.set('CONFIG_DATA', get_option('data'))
+conf_data.set('CONFIG_GEMINI', get_option('gemini'))
 
 conf_data.set('CONFIG_URI_REWRITE', get_option('uri-rewrite'))
 conf_data.set('CONFIG_CGI', get_option('cgi'))
@@ -44,7 +46,7 @@ conf_data.set('CONFIG_TRUE_COLOR', get_option('true-color'))
 conf_data.set('CONFIG_EXMODE', get_option('exmode'))
 conf_data.set('CONFIG_LEDS', get_option('leds'))
 conf_data.set('CONFIG_MARKS', get_option('marks'))
-conf_data.set10('CONFIG_CSS', get_option('css'))
+conf_data.set('CONFIG_CSS', get_option('css'))
 conf_data.set('CONFIG_DOM', get_option('html-highlight'))
 
 conf_data.set('CONFIG_BACKTRACE', get_option('backtrace'))
@@ -86,43 +88,17 @@ conf_data.set('CONFIG_OPENSSL', get_option('openssl'))
 conf_data.set('CONFIG_LIBEV', get_option('libev'))
 conf_data.set('CONFIG_LIBEVENT', get_option('libevent'))
 conf_data.set('CONFIG_X', get_option('x'))
-conf_data.set('CONFIG_LIBDOM', get_option('libdom'))
+conf_data.set('CONFIG_XML', get_option('xml'))
+conf_data.set('CONFIG_QUICKJS', get_option('quickjs'))
 
-#CONFIG_BOOKMARKS=true
-#CONFIG_XBEL_BOOKMARKS=true
-#CONFIG_COOKIES=true
-#CONFIG_DOM=true
-if conf_data.get('CONFIG_SCRIPTING_SPIDERMONKEY') == 1 or conf_data.get('CONFIG_ECMASCRIPT_SMJS')
+if conf_data.get('CONFIG_SCRIPTING_SPIDERMONKEY') or conf_data.get('CONFIG_ECMASCRIPT_SMJS') or conf_data.get('CONFIG_QUICKJS')
     conf_data.set('CONFIG_ECMASCRIPT', true)
 else
     conf_data.set('CONFIG_ECMASCRIPT', false)
 endif
 conf_data.set('CONFIG_ECMASCRIPT_SMJS_HEARTBEAT', true)
 
-
-
-#CONFIG_FORMHIST', true)
-#CONFIG_GLOBHIST', true)
 conf_data.set('CONFIG_SCRIPTING', true)
-#CONFIG_SCRIPTING_GUILE', false)
-#conf_data.set('CONFIG_SCRIPTING_LUA', true)
-#CONFIG_SCRIPTING_PERL', false)
-#CONFIG_SCRIPTING_PYTHON', false)
-#CONFIG_SCRIPTING_RUBY', false)
-#CONFIG_SCRIPTING_SPIDERMONKEY', false)
-#CONFIG_LEDS', true)
-#CONFIG_EXMODE', false)
-#CONFIG_CSS', true)
-#CONFIG_LIBDOM', false)
-#CONFIG_BROTLI', true)
-#CONFIG_BZIP2', true)
-#CONFIG_GZIP', true)
-#CONFIG_LZMA', false)
-#CONFIG_ZSTD', true)
-#CONFIG_NLS', true)
-#CONFIG_UTF8', true)
-#CONFIG_MAILCAP', true)
-#CONFIG_MIMETYPES', true)
 
 system = host_machine.system()
 if system == 'haiku'
@@ -152,7 +128,6 @@ conf_data.set10('HAVE_DIRENT_H', 1)
 # AC_HEADER_SYS_WAIT
 conf_data.set10('HAVE_SYS_WAIT_H', 1)
 # AC_HEADER_TIME
-conf_data.set10('TIME_WITH_SYS_TIME', 1)
 conf_data.set10('HAVE_SYS_TIME_H', 1)
 
 compiler = meson.get_compiler('c')
@@ -166,8 +141,6 @@ endif
 conf_data.set10('HAVE_WCHAR_H', compiler.has_header('wchar.h'))
 conf_data.set10('HAVE_WCTYPE_H', compiler.has_header('wctype.h'))
 conf_data.set10('HAVE_FCNTL_H', compiler.has_header('fcntl.h'))
-conf_data.set10('HAVE_LIMITS_H', compiler.has_header('limits.h'))
-conf_data.set10('HAVE_TIME_H', compiler.has_header('time.h'))
 conf_data.set10('HAVE_UNISTD_H', compiler.has_header('unistd.h'))
 conf_data.set10('HAVE_SIGACTION_H', compiler.has_header('sigaction.h'))
 conf_data.set10('HAVE_ARPA_INET_H', compiler.has_header('arpa/inet.h'))
@@ -193,7 +166,6 @@ conf_data.set10('HAVE_NET_IF_H', compiler.has_header('net/if.h'))
 
 conf_data.set10('HAVE_STDINT_H', compiler.has_header('stdint.h'))
 conf_data.set10('HAVE_INTTYPES_H', compiler.has_header('inttypes.h'))
-conf_data.set10('HAVE_LOCALE_H', compiler.has_header('locale.h'))
 conf_data.set10('HAVE_PWD_H', compiler.has_header('pwd.h'))
 conf_data.set10('HAVE_TERMIOS_H', compiler.has_header('termios.h'))
 conf_data.set10('HAVE_POLL_H', compiler.has_header('poll.h'))
@@ -204,9 +176,11 @@ conf_data.set('HAVE_IDNA_H', compiler.has_header('idna.h'))
 
 conf_data.set('HAVE_EVENT_H', compiler.has_header('event.h'))
 
-conf_data.set10('HAVE_STDLIB_H', compiler.has_header('stdlib.h'))
-conf_data.set10('HAVE_STRING_H', compiler.has_header('string.h'))
 conf_data.set10('HAVE_ALLOCA_H', compiler.has_header('alloca.h'))
+
+conf_data.set('HAVE_STDALIGN_H', compiler.has_header('stdalign.h'))
+
+conf_data.set('HAVE_TERM_H', compiler.has_header('term.h'))
 
 deps = []
 if conf_data.get('CONFIG_GZIP')
@@ -219,7 +193,16 @@ if conf_data.get('CONFIG_TRE')
     deps += tredeps
 endif
 
-if conf_data.get('CONFIG_LIBEVENT')
+eh = ''
+if conf_data.get('CONFIG_LIBEV')
+    conf_data.set('HAVE_LIBEV_EVENT_H', compiler.has_header('libev/event.h'))
+    conf_data.set('HAVE_LIBEV', true)
+    eh = '#include <libev/event.h>'
+    eventdeps = compiler.find_library('ev')
+    deps += eventdeps
+    conf_data.set('CONFIG_LIBEVENT', false)
+elif conf_data.get('CONFIG_LIBEVENT')
+    eh = '#include <event.h>'
     eventdeps = dependency('libevent')
     deps += eventdeps
     conf_data.set('HAVE_LIBEVENT', true)
@@ -227,16 +210,15 @@ else
     eventdeps = []
 endif
 
+gnutlsdeps = []
+ssldeps = []
+
 if conf_data.get('CONFIG_OPENSSL')
     ssldeps = dependency('openssl')
     deps += ssldeps
     conf_data.set('USE_OPENSSL', true)
-else
-    ssldeps = []
-endif
-
-gnutlsdeps = []
-if conf_data.get('CONFIG_GNUTLS')
+    conf_data.set('CONFIG_GNUTLS', false)
+elif conf_data.get('CONFIG_GNUTLS')
     gnutlsdeps = dependency('gnutls')
     libgcryptdeps = dependency('libgcrypt')
     deps += gnutlsdeps
@@ -251,6 +233,11 @@ endif
 if conf_data.get('CONFIG_ZSTD')
     zstddeps = dependency('libzstd')
     deps += zstddeps
+endif
+
+if conf_data.get('CONFIG_LZMA')
+    lzmadeps = dependency('liblzma')
+    deps += lzmadeps
 endif
 
 if conf_data.get('CONFIG_IDN')
@@ -270,9 +257,15 @@ if conf_data.get('CONFIG_BZIP2')
     deps += bz2deps
 endif
 
-if conf_data.get('CONFIG_ECMASCRIPT')
-    mozjsdeps = dependency('mozjs-52')
+if conf_data.get('CONFIG_ECMASCRIPT_SMJS')
+    mozjsdeps = dependency('mozjs-78')
     deps += mozjsdeps
+endif
+
+if conf_data.get('CONFIG_ECMASCRIPT')
+    sqlite3deps = dependency('sqlite3')
+    deps += sqlite3deps
+    conf_data.set('CONFIG_XML', true)
 endif
 
 if conf_data.get('CONFIG_SCRIPTING_LUA')
@@ -290,9 +283,9 @@ if conf_data.get('CONFIG_GPM')
     deps += libgpmdeps
 endif
 
-if conf_data.get('CONFIG_LIBDOM')
-    domdeps = dependency('libdom')
-    deps += domdeps
+if conf_data.get('CONFIG_XML')
+    xmlplusplusdeps = dependency('libxml++-5.0')
+    deps += xmlplusplusdeps
 endif
 
 if conf_data.get('CONFIG_SCRIPTING_PYTHON')
@@ -300,15 +293,31 @@ if conf_data.get('CONFIG_SCRIPTING_PYTHON')
     deps += python3deps
 endif
 
+if conf_data.get('CONFIG_SCRIPTING_PERL')
+    perl_libs = ''
+    perl_l = run_command('perl', '-MExtUtils::Embed', '-e', 'ldopts')
+    if perl_l.returncode() == 0
+        perl_libs = perl_l.stdout().strip().split()
+    endif
+
+    perl_cflags = ''
+    perl_c = run_command('perl', '-MExtUtils::Embed', '-e', 'ccopts')
+    if perl_c.returncode() == 0
+        perl_cflags = perl_c.stdout().strip().split()
+    endif
+    perl_dep = declare_dependency(compile_args: perl_cflags, link_args: perl_libs)
+    deps += perl_dep
+endif
+
 rubydeps = []
 if conf_data.get('CONFIG_SCRIPTING_RUBY')
-    rubydeps = dependency('ruby-2.6')
+    rubydeps = dependency('ruby')
     deps += rubydeps
 endif
 
 guiledeps = []
 if conf_data.get('CONFIG_SCRIPTING_GUILE')
-    guiledeps = dependency('guile-2.2')
+    guiledeps = dependency('guile-3.0')
     deps += guiledeps
 endif
 
@@ -317,13 +326,23 @@ if conf_data.get('CONFIG_FSP')
     deps += fspdeps
 endif
 
-eh = ''
+dep_atomic = dependency('', required: false)
 
-if conf_data.get('CONFIG_LIBEV')
-    conf_data.set('HAVE_LIBEV_EVENT_H', compiler.has_header('libev/event.h'))
-    eh = '#include <libev/event.h>'
-elif conf_data.get('CONFIG_LIBEVENT')
-    eh = '#include <event.h>'
+if not compiler.links('''#include <stdint.h>
+    int main() {
+        struct {
+            uint64_t *v;
+        } x;
+        return (int)__atomic_load_n(x.v, __ATOMIC_ACQUIRE) & (int)__atomic_add_fetch(x.v, (uint64_t)1, __ATOMIC_ACQ_REL);
+    }''',
+    name: 'GCC atomic builtins required -latomic')
+        dep_atomic = compiler.find_library('atomic')
+endif
+
+if conf_data.get('CONFIG_QUICKJS')
+    quickjsdeps = compiler.find_library('quickjs/libquickjs', static : true)
+    deps += quickjsdeps
+    deps += dep_atomic
 endif
 
 if compiler.has_header('sys/un.h')
@@ -331,6 +350,11 @@ if compiler.has_header('sys/un.h')
     conf_data.set10('HAVE_SYS_UN_H', true)
 else
     conf_data.set('CONFIG_INTERLINK', false)
+endif
+
+if conf_data.get('CONFIG_TERMINFO')
+    terminfodeps = dependency('ncursesw')
+    deps += terminfodeps
 endif
 
 #AC_STRUCT_TM
@@ -682,28 +706,7 @@ conf_data.set('SIZEOF_LONG', compiler.sizeof('long'))
 conf_data.set('SIZEOF_LONG_LONG', compiler.sizeof('long long'))
 conf_data.set('SIZEOF_OFF_T', compiler.sizeof('off_t'))
 
-
-#AC_CHECK_FUNCS([cygwin_conv_to_full_win32_path])
-
-#CONFIG_BITTORRENT', true)
-#CONFIG_FINGER', false)
-#CONFIG_FSP', false)
-#CONFIG_FTP', true)
-#CONFIG_GOPHER', true)
-#CONFIG_NNTP', false)
-#CONFIG_SMB', false)
-#CONFIG_URI_REWRITE', true)
-#CONFIG_CGI', true)
-#CONFIG_GSSAPI', false)
-#CONFIG_DATA', true)
-#CONFIG_MOUSE', true)
-#CONFIG_TERMINFO', false)
-#CONFIG_SMALL', false)
-#CONFIG_DEBUG', false)
-#CONFIG_OWN_LIBC', false)
 conf_data.set('CONFIG_GNUTLS_OPENSSL_COMPAT', false)
-#CONFIG_OPENSSL', true)
-#CONFIG_MARKS', true)
 
 configure_file(input : 'config2.h.in',
                output : 'config.h',

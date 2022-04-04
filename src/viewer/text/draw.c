@@ -17,13 +17,14 @@
 #include "cache/cache.h"
 #include "document/document.h"
 #include "document/html/frames.h"
+#include "document/html/iframes.h"
 #include "document/options.h"
 #include "document/refresh.h"
 #include "document/renderer.h"
 #include "document/view.h"
 #include "dialogs/status.h"		/* print_screen_status() */
 #include "intl/charsets.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "protocol/uri.h"
 #include "session/location.h"
 #include "session/session.h"
@@ -166,6 +167,46 @@ draw_frame_lines(struct terminal *term, struct frameset_desc *frameset_desc,
 }
 
 static void
+draw_iframe_lines(struct terminal *term, struct iframeset_desc *iframe_desc,
+		 int xp, int yp, struct color_pair *colors)
+{
+	int j;
+
+	assert(term && iframe_desc && iframe_desc->iframe_desc);
+	if_assert_failed return;
+
+	for (j = 0; j < iframe_desc->n; j++) {
+		struct el_box box;
+
+		int y = iframe_desc->iframe_desc[j].y - 1;
+		int x = iframe_desc->iframe_desc[j].x - 1;
+
+		int height = iframe_desc->iframe_desc[j].height + 1;
+		int width = iframe_desc->iframe_desc[j].width + 1;
+
+		set_box(&box, x, y + 1, 1, height - 1);
+		draw_box(term, &box, BORDER_SVLINE, SCREEN_ATTR_FRAME, colors);
+
+		set_box(&box, x + width, y + 1, 1, height - 1);
+		draw_box(term, &box, BORDER_SVLINE, SCREEN_ATTR_FRAME, colors);
+
+		set_box(&box, x + 1, y, width -1 , 1);
+		draw_box(term, &box, BORDER_SHLINE, SCREEN_ATTR_FRAME, colors);
+
+		set_box(&box, x + 1, y + height, width - 1, 1);
+		draw_box(term, &box, BORDER_SHLINE, SCREEN_ATTR_FRAME, colors);
+
+		draw_border_char(term, x, y, BORDER_SULCORNER, colors);
+		draw_border_char(term, x, y + height, BORDER_SDLCORNER, colors);
+
+		draw_border_char(term, x + width, y, BORDER_SURCORNER, colors);
+		draw_border_char(term, x + width, y + height, BORDER_SDRCORNER, colors);
+		draw_border_cross(term, x, y, BORDER_X_DOWN, colors);
+	}
+}
+
+
+static void
 draw_clipboard(struct terminal *term, struct document_view *doc_view)
 {
 	struct document *document = doc_view->document;
@@ -288,12 +329,13 @@ draw_doc(struct session *ses, struct document_view *doc_view, int active)
 	}
 
 	if (document_has_frames(doc_view->document)) {
-	 	draw_box(term, box, ' ', 0, &color);
+		draw_box(term, box, ' ', 0, &color);
 		draw_frame_lines(term, doc_view->document->frame_desc, box->x, box->y, &color);
 		if (vs->current_link == -1)
 			vs->current_link = 0;
 		return;
 	}
+
 
 	if (ses->navigate_mode == NAVIGATE_LINKWISE) {
 		check_vs(doc_view);
@@ -362,6 +404,12 @@ draw_doc(struct session *ses, struct document_view *doc_view, int active)
 	draw_view_status(ses, doc_view, active);
 	if (has_search_word(doc_view))
 		doc_view->last_x = doc_view->last_y = -1;
+
+	if (document_has_iframes(doc_view->document)) {
+		draw_iframe_lines(term, doc_view->document->iframe_desc, box->x, box->y, &color);
+		if (vs->current_link == -1)
+			vs->current_link = 0;
+	}
 }
 
 static void
@@ -374,13 +422,19 @@ draw_frames(struct session *ses)
 	assert(ses && ses->doc_view && ses->doc_view->document);
 	if_assert_failed return;
 
-	if (!document_has_frames(ses->doc_view->document)) return;
+	if (!document_has_frames(ses->doc_view->document)
+	&& !document_has_iframes(ses->doc_view->document)) return;
 
 	n = 0;
 	foreach (doc_view, ses->scrn_frames) {
 	       doc_view->last_x = doc_view->last_y = -1;
 	       n++;
 	}
+	foreach (doc_view, ses->scrn_iframes) {
+	       doc_view->last_x = doc_view->last_y = -1;
+	       n++;
+	}
+
 	l = &cur_loc(ses)->vs.current_link;
 	*l = int_max(*l, 0) % int_max(n, 1);
 
@@ -394,6 +448,9 @@ draw_frames(struct session *ses)
 				draw_doc(ses, doc_view, doc_view == current_doc_view);
 			else if (doc_view->depth > d)
 				more = 1;
+		}
+		if (d == 0) foreach (doc_view, ses->scrn_iframes) {
+			draw_doc(ses, doc_view, doc_view == current_doc_view);
 		}
 
 		if (!more) break;

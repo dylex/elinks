@@ -42,7 +42,7 @@ struct event_handler {
 
 struct event {
 	/* The event name has to be unique. */
-	unsigned char *name;
+	char *name;
 
 	/* There are @count event @handlers all ordered by priority. */
 	struct event_handler *handlers;
@@ -68,13 +68,13 @@ static struct hash *event_hash = NULL;
 	mem_align_alloc(ptr, (size), (size) + 1, EVENT_GRANULARITY)
 
 static inline int
-invalid_event_id(register int id)
+invalid_event_id(int id)
 {
 	return (id < 0 || id >= eventssize || id == EVENT_NONE);
 }
 
 int
-register_event(unsigned char *name)
+register_event(char *name)
 {
 	int id = get_event_id(name);
 	struct event *event;
@@ -117,7 +117,7 @@ register_event(unsigned char *name)
 }
 
 int
-get_event_id(unsigned char *name)
+get_event_id(const char *name)
 {
 	struct hash_item *item;
 	int namelen;
@@ -141,7 +141,7 @@ get_event_id(unsigned char *name)
 	return EVENT_NONE;
 }
 
-unsigned char *
+char *
 get_event_name(int id)
 {
 	if (invalid_event_id(id)) return NULL;
@@ -181,7 +181,7 @@ trigger_event(int id, ...)
 }
 
 void
-trigger_event_name(unsigned char *name, ...)
+trigger_event_name(char *name, ...)
 {
 	va_list ap;
 	int id = get_event_id(name);

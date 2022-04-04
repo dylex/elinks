@@ -106,12 +106,12 @@ lzma_read(struct stream_encoded *stream, unsigned char *buf, int len)
 	return len - data->flzma_stream.avail_out;
 }
 
-static unsigned char *
+static char *
 lzma_decode_buffer(struct stream_encoded *st, unsigned char *data, int len, int *new_len)
 {
 	struct lzma_enc_data *enc_data = (struct lzma_enc_data *) st->data;
 	lzma_stream *stream = &enc_data->flzma_stream;
-	unsigned char *buffer = NULL;
+	char *buffer = NULL;
 	int error;
 
 	*new_len = 0;	  /* default, left there if an error occurs */
@@ -124,7 +124,7 @@ lzma_decode_buffer(struct stream_encoded *st, unsigned char *data, int len, int 
 		return NULL;
 
 	do {
-		unsigned char *new_buffer;
+		char *new_buffer;
 		size_t size = stream->total_out + MAX_STR_LEN;
 
 		new_buffer = mem_realloc(buffer, size);
@@ -176,7 +176,7 @@ lzma_close(struct stream_encoded *stream)
 	}
 }
 
-static const unsigned char *const lzma_extensions[] = { ".lzma", ".xz", NULL };
+static const char *const lzma_extensions[] = { ".lzma", ".xz", NULL };
 
 const struct decoding_backend lzma_decoding_backend = {
 	"lzma",

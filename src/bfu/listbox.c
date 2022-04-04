@@ -12,7 +12,7 @@
 #include "bfu/hierbox.h"
 #include "bfu/listbox.h"
 #include "config/kbdbind.h"
-#include "intl/gettext/libintl.h"
+#include "intl/libintl.h"
 #include "terminal/draw.h"
 #include "terminal/mouse.h"
 #include "terminal/terminal.h"
@@ -460,7 +460,7 @@ display_listbox_item(struct listbox_item *item, void *data_, int *offset)
 		data->box->ops->draw(item, data, x, y, width);
 
 	} else {
-		unsigned char *text;
+		char *text;
 		const struct listbox_ops *ops = data->box->ops;
 		int len_bytes;
 

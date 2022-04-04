@@ -1,0 +1,243 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include <locale.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "elinks.h"
+
+#include "intl/libintl.h"
+#include "util/env.h"
+
+/* The number of the charset to which the "elinks" domain was last
+ * bound with bind_textdomain_codeset(), or -1 if none yet.  This
+ * cannot be a static variable in _(), because then it would get
+ * duplicated in every translation unit, even though the actual
+ * binding is global.  */
+int current_charset = -1;
+
+/* This is a language lookup table. Indexed by code. */
+/* Update this everytime you add a new translation. */
+/* TODO: Try to autogenerate it somehow. Maybe just a complete table? Then we
+ * will anyway need a table of real translations. */
+struct language languages[] = {
+	{N_("System"), "system"},
+	{N_("English"), "en"},
+
+	{N_("Afrikaans"), "af"},
+	{N_("Belarusian"), "be"},
+	{N_("Brazilian Portuguese"), "pt-BR"},
+	{N_("Bulgarian"), "bg"},
+	{N_("Catalan"), "ca"},
+	{N_("Croatian"), "hr"},
+	{N_("Czech"), "cs"},
+	{N_("Danish"), "da"},
+	{N_("Dutch"), "nl"},
+	{N_("Estonian"), "et"},
+	{N_("Finnish"), "fi"},
+	{N_("French"), "fr"},
+	{N_("Galician"), "gl"},
+	{N_("German"), "de"},
+	{N_("Greek"), "el"},
+	{N_("Hungarian"), "hu"},
+	{N_("Icelandic"), "is"},
+	{N_("Indonesian"), "id"},
+	{N_("Italian"), "it"},
+	{N_("Japanese"), "ja"},
+	{N_("Lithuanian"), "lt"},
+	{N_("Norwegian"), "no"},
+	{N_("Polish"), "pl"},
+	{N_("Portuguese"), "pt"},
+	{N_("Romanian"), "ro"},
+	{N_("Russian"), "ru"},
+	{N_("Serbian"), "sr"},
+	{N_("Slovak"), "sk"},
+	{N_("Spanish"), "es"},
+	{N_("Swedish"), "sv"},
+	{N_("Turkish"), "tr"},
+	{N_("Ukrainian"), "uk"},
+
+	{NULL, NULL},
+};
+
+/* XXX: In fact this is _NOT_ a real ISO639 code but RFC3066 code (as we're
+ * supposed to use that one when sending language tags through HTTP/1.1) and
+ * that one consists basically from ISO639[-ISO3166].  This is important for
+ * ie. pt vs pt-BR. */
+/* TODO: We should reflect this in name of this function and of the tag. On the
+ * other side, it's ISO639 for gettext as well etc. So what?  --pasky */
+
+int
+iso639_to_language(char *iso639)
+{
+	char *l = stracpy(iso639);
+	char *p;
+	int i, ll;
+
+	if (!l)
+		return 1;
+
+	/* The environment variable transformation. */
+
+	p = strchr((const char *)l, '.');
+	if (p)
+		*p = '\0';
+
+	p = strchr((const char *)l, '_');
+	if (p)
+		*p = '-';
+	else
+		p = strchr((const char *)l, '-');
+
+	/* Exact match. */
+
+	for (i = 0; languages[i].name; i++) {
+		if (strcmp(languages[i].iso639, l))
+			continue;
+		mem_free(l);
+		return i;
+	}
+
+	/* Base language match. */
+
+	if (p) {
+		*p = '\0';
+		for (i = 0; languages[i].name; i++) {
+			if (strcmp(languages[i].iso639, l))
+				continue;
+			mem_free(l);
+			return i;
+		}
+	}
+
+	/* Any dialect match. */
+
+	ll = strlen(l);
+	for (i = 0; languages[i].name; i++) {
+		int il = strcspn(languages[i].iso639, "-");
+
+		if (strncmp(languages[i].iso639, l, il > ll ? ll : il))
+			continue;
+		mem_free(l);
+		return i;
+	}
+
+	/* Default to english. */
+
+	mem_free(l);
+	return 1;
+}
+
+int system_language = 0;
+
+char *
+language_to_iso639(int language)
+{
+	/* Language is "system", we need to extract the index from
+	 * the environment */
+	if (language == 0) {
+		return system_language ?
+			languages[system_language].iso639 :
+			languages[get_system_language_index()].iso639;
+	}
+
+	return languages[language].iso639;
+}
+
+int
+name_to_language(const char *name)
+{
+	int i;
+
+	for (i = 0; languages[i].name; i++) {
+		if (c_strcasecmp(languages[i].name, name))
+			continue;
+		return i;
+	}
+	return 1;
+}
+
+char *
+language_to_name(int language)
+{
+	return languages[language].name;
+}
+
+int
+get_system_language_index(void)
+{
+	char *l;
+
+	/* At this point current_language must be "system" yet. */
+	l = getenv("LANGUAGE");
+	if (!l)
+		l = getenv("LC_ALL");
+	if (!l)
+		l = getenv("LC_MESSAGES");
+	if (!l)
+		l = getenv("LANG");
+
+	return (l) ? iso639_to_language(l) : 1;
+}
+
+int current_language = 0;
+
+char *LANGUAGE;
+
+void
+set_language(int language)
+{
+	char *p;
+
+	if (!system_language)
+		system_language = get_system_language_index();
+
+	if (language == current_language) {
+		/* Nothing to do. */
+		return;
+	}
+
+	current_language = language;
+
+	if (!language)
+		language = system_language;
+
+	if (!LANGUAGE) {
+		/* We never free() this, purely intentionally. */
+		LANGUAGE = malloc(256);
+	}
+	if (LANGUAGE) {
+		strcpy(LANGUAGE, language_to_iso639(language));
+		p = strchr((const char *)LANGUAGE, '-');
+		if (p) {
+			*p = '_';
+		}
+	}
+	env_set("LANGUAGE", LANGUAGE, -1);
+
+	_nl_msg_cat_cntr++;
+}
+
+static void
+init_gettext(struct module *module)
+{
+}
+
+static void
+done_gettext(struct module *module)
+{
+	mem_free_set(&LANGUAGE, NULL);
+}
+
+struct module gettext_module = struct_module(
+	/* name: */		"gettext (System)",
+	/* options: */		NULL,
+	/* hooks: */		NULL,
+	/* submodules: */	NULL,
+	/* data: */		NULL,
+	/* init: */		init_gettext,
+	/* done: */		done_gettext
+);

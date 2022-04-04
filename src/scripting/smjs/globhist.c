@@ -18,10 +18,17 @@ static bool smjs_globhist_item_set_property(JSContext *ctx, JS::HandleObject hob
 static void smjs_globhist_item_finalize(JSFreeOp *op, JSObject *obj);
 
 static const JSClassOps smjs_globhist_item_ops = {
-	JS_PropertyStub, nullptr,
-	smjs_globhist_item_get_property, smjs_globhist_item_set_property,
-	nullptr, nullptr, nullptr,
-	smjs_globhist_item_finalize,
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass smjs_globhist_item_class = {
@@ -160,16 +167,14 @@ smjs_globhist_item_set_property(JSContext *ctx, JS::HandleObject hobj, JS::Handl
 
 	switch (JSID_TO_INT(id)) {
 	case GLOBHIST_TITLE: {
-		JSString *jsstr = hvp.toString();
-		unsigned char *str = JS_EncodeString(smjs_ctx, jsstr);
+		char *str = jsval_to_string(smjs_ctx, hvp);
 
 		mem_free_set(&history_item->title, stracpy(str));
 
 		return true;
 	}
 	case GLOBHIST_URL: {
-		JSString *jsstr = hvp.toString();
-		unsigned char *str = JS_EncodeString(smjs_ctx, jsstr);
+		char *str = jsval_to_string(smjs_ctx, hvp);
 
 		mem_free_set(&history_item->url, stracpy(str));
 
@@ -219,7 +224,7 @@ smjs_globhist_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId h
 	jsid id = hid.get();
 
 	JSObject *jsobj;
-	unsigned char *uri_string;
+	char *uri_string;
 	struct global_history_item *history_item;
 	JS::Value tmp;
 	JS::RootedValue r_tmp(ctx, tmp);
@@ -228,7 +233,7 @@ smjs_globhist_get_property(JSContext *ctx, JS::HandleObject hobj, JS::HandleId h
 	if (!JS_IdToValue(ctx, id, &r_tmp))
 		goto ret_null;
 
-	uri_string = JS_EncodeString(ctx, r_tmp.toString());
+	uri_string = jsval_to_string(ctx, r_tmp);
 	if (!uri_string) goto ret_null;
 
 	history_item = get_global_history_item(uri_string);
@@ -248,9 +253,17 @@ ret_null:
 }
 
 static const JSClassOps smjs_globhist_ops = {
-	JS_PropertyStub, nullptr,
-	smjs_globhist_get_property, JS_StrictPropertyStub,
-	nullptr, nullptr, nullptr, nullptr
+	nullptr,  // addProperty
+	nullptr,  // deleteProperty
+	nullptr,  // enumerate
+	nullptr,  // newEnumerate
+	nullptr,  // resolve
+	nullptr,  // mayResolve
+	nullptr,  // finalize
+	nullptr,  // call
+	nullptr,  // hasInstance
+	nullptr,  // construct
+	nullptr // trace JS_GlobalObjectTraceHook
 };
 
 static const JSClass smjs_globhist_class = {
@@ -320,8 +333,7 @@ smjs_globhist_item_set_property_title(JSContext *ctx, unsigned int argc, JS::Val
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
 	struct global_history_item *history_item;
-	JSString *jsstr;
-	unsigned char *str;
+	char *str;
 
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
@@ -335,8 +347,7 @@ smjs_globhist_item_set_property_title(JSContext *ctx, unsigned int argc, JS::Val
 
 	if (!history_item) return false;
 
-	jsstr = args[0].toString();
-	str = JS_EncodeString(smjs_ctx, jsstr);
+	str = jsval_to_string(smjs_ctx, args[0]);
 	mem_free_set(&history_item->title, stracpy(str));
 
 	return true;
@@ -374,8 +385,7 @@ smjs_globhist_item_set_property_url(JSContext *ctx, unsigned int argc, JS::Value
 	JS::RootedObject hobj(ctx, &args.thisv().toObject());
 
 	struct global_history_item *history_item;
-	JSString *jsstr;
-	unsigned char *str;
+	char *str;
 
 	/* This can be called if @obj if not itself an instance of the
 	 * appropriate class but has one in its prototype chain.  Fail
@@ -389,8 +399,7 @@ smjs_globhist_item_set_property_url(JSContext *ctx, unsigned int argc, JS::Value
 
 	if (!history_item) return false;
 
-	jsstr = args[0].toString();
-	str = JS_EncodeString(smjs_ctx, jsstr);
+	str = jsval_to_string(smjs_ctx, args[0]);
 	mem_free_set(&history_item->url, stracpy(str));
 
 	return true;

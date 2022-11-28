@@ -859,7 +859,7 @@ http_send_header(struct socket *socket)
 	 * sending "Accept: text/css" when it wants an external
 	 * stylesheet, then it should do that only in the inner GET
 	 * and not in the outer CONNECT.  */
-	add_to_string(&header, "Accept: */*");
+	add_to_string(&header, "Accept: text/html, */*");
 	add_crlf_to_string(&header);
 
 	if (get_opt_bool("protocol.http.compression", NULL))
